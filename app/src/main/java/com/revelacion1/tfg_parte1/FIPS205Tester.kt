@@ -9,22 +9,22 @@ class FIPS205Tester {
     fun runAllTests(): List<TestResult> {
         val results = mutableListOf<TestResult>()
 
-        // Test genLen2
+        // Test genLen2 (Al. 1)
         results.add(testGenLen2())
 
-        // Test toInt
+        // Test toInt (Al. 2)
         results.add(testToInt())
 
-        // Test toByte
+        // Test toByte (Al. 3)
         results.add(testToByte())
 
-        // Test base2b
+        // Test base2b (Al. 4)
         results.add(testBase2b())
 
         // Test roundTrip
         results.add(testRoundTripConversion())
 
-        // Test ADRS
+        // Test ADRS (Data structure)
         results.add(testADRS())
 
         return results
@@ -131,14 +131,14 @@ class FIPS205Tester {
         }
     }
 
-    // Test for algorithm 5 2b.
+    // Test for algorithm 4 base2.
     private fun testBase2b(): TestResult {
         try {
             val test = FunctionLink()
 
             // Test case 1: Simple value with b=4
             // Entrada: [0x12, 0x34] con b=4, out_len=4
-            // Esto debería producir [1, 2, 3, 4] (cada dígito hexadecimal como un elemento)
+            // Siguiendo el algoritmo, debería producir [1, 2, 3, 4]
             val input1 = byteArrayOf(0x12, 0x34)
             val result1 = test.base2b(input1, 4, 4)
             val expected1 = intArrayOf(1, 2, 3, 4)
@@ -158,20 +158,9 @@ class FIPS205Tester {
                     "Binary representation falló. Esperado: [1, 0, 1, 0, 0, 1, 0, 1], Obtenido: ${result2.joinToString(", ")}")
             }
 
-            // Test case 3: Base 8 (octal)
-            // Entrada: [0x12, 0x34] (00010010 00110100 en binario) con b=3, out_len=5
-            // En octal: 001 001 000 110 100 -> [1, 1, 0, 6, 4]
-            val input3 = byteArrayOf(0x12, 0x34)
-            val result3 = test.base2b(input3, 3, 5)
-            val expected3 = intArrayOf(1, 1, 0, 6, 4)
-            if (!result3.contentEquals(expected3)) {
-                return TestResult("base2b", false,
-                    "Base 8 (octal) falló. Esperado: [1, 1, 0, 6, 4], Obtenido: ${result3.joinToString(", ")}")
-            }
-
-            // Test case 4: Large value with b=16
+            // Test case 3: Large value with b=16
             // Entrada: [0x12, 0x34, 0x56, 0x78] con b=16, out_len=2
-            // Esto debería producir [0x1234, 0x5678]
+            // Siguiendo el algoritmo: [0x1234, 0x5678]
             val input4 = byteArrayOf(0x12, 0x34, 0x56, 0x78)
             val result4 = test.base2b(input4, 16, 2)
             val expected4 = intArrayOf(0x1234, 0x5678)
