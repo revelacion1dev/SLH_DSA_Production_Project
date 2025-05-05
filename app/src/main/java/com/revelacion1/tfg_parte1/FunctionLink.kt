@@ -5,6 +5,7 @@ class FunctionLink {
     external fun genLen2(n: Long, lg_w: Long): Long
     external fun toInt(x: ByteArray, n: Int): Long
     external fun toByte(x: Long, n: Int): ByteArray
+    external fun base2b(x: ByteArray, b: Int, out_len: Int ): IntArray
 
     // Nuevos métodos nativos para ADRS
     external fun createADRS(): Long  // Devuelve un puntero/handle a la instancia de ADRS
@@ -18,13 +19,14 @@ class FunctionLink {
     external fun setTreeHeight(adrsPtr: Long, height: Int)
     external fun setHashAddress(adrsPtr: Long, hash: Int)
     external fun setTreeIndex(adrsPtr: Long, index: Int)
-    external fun getKeyPairAddress(adrsPtr: Long): Int
-    external fun getTreeIndex(adrsPtr: Long): Int
+    external fun getKeyPairAddress(adrsPtr: Long): Long
+    external fun getTreeIndex(adrsPtr: Long): Long
 
     // Helper method for testing
     fun formatBase2bResult(result: IntArray): String {
         return result.joinToString(", ", prefix = "[", postfix = "]")
     }
+
 
     // Helper para formatear bytes en hexadecimal
     fun bytesToHex(bytes: ByteArray): String {

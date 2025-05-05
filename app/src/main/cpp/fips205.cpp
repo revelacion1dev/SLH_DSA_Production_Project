@@ -3,225 +3,229 @@
 
 
 // ADRS operations implementations
-namespace adrs_ops {
 
-    // Incluimos la funcion necesaria para las funciones internas
-    std::vector<uint8_t> toByte(const std::vector<uint8_t>& X, uint64_t n);
-
-    const uint8_t* getAddressBytes(const ADRS& adrs) {
-        return adrs.getAddress(); // Devuelve puntero a los 32 bytes
+    ADRS::ADRS() {
+        addr.fill(0);
     }
 
-    // Layer address - bytes 0-3
-    void setLayerAddress(ADRS& adrs, uint32_t layer) {
-        // Primero convertir uint32_t a vector<uint8_t>
-        std::vector<uint8_t> layerVector;
-        uint32_t temp = layer;
+    // Método para obtener la dirección completa como puntero (borrar)
+    const uint8_t* ADRS::getAddress() const {
+        return addr.data(); // Devuelve un puntero a los bytes de la dirección
+    }
 
-        // Agregar bytes en orden inverso (menos significativo primero)
-        while (temp > 0 || layerVector.empty()) {
-            layerVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
+    // Operador para acceder directamente a los bytes
+    uint8_t& ADRS::operator[](size_t index) {
+        return addr[index];
+    }
 
-        // Invertir para formato big-endian
-        std::reverse(layerVector.begin(), layerVector.end());
+    // Operador para acceder directamente a los bytes (versión const)
+    const uint8_t& ADRS::operator[](size_t index) const {
+        return addr[index];
+    }
 
-        // Ahora usar toByte con el operador de ámbito global
-        std::vector<uint8_t> layer_bytes = ::toByte(layerVector, 4);
+    // Tamaño de la dirección en bytes
+    constexpr size_t ADRS::size() {
+        return 32;
+    }
 
-        // Insertar los 4 bytes en la dirección
+    // Bytes 0-3 (big-endian)
+    void ADRS::setLayerAddress(uint32_t layer) {
+        // Crear representación big-endian
+        std::vector<uint8_t> input = {
+                static_cast<uint8_t>((layer >> 24) & 0xFF),  // Byte más significativo primero
+                static_cast<uint8_t>((layer >> 16) & 0xFF),
+                static_cast<uint8_t>((layer >> 8) & 0xFF),
+                static_cast<uint8_t>(layer & 0xFF)           // Byte menos significativo al final
+        };
+
+        // Usar toByte para convertir a representación de 4 bytes
+        std::vector<uint8_t> layer_bytes = ::toByte(input, 4);
+
+        // Copiar al ADRS
         for (int i = 0; i < 4; i++) {
-            adrs[i] = layer_bytes[i];
+            addr[i] = layer_bytes[i];
         }
     }
 
     // Tree address - bytes 4-15 (contains 3 words)
-    void setTreeAddress(ADRS& adrs, const uint8_t tree[12]) {
-        // Convertimos el array a un vector para usar la implementación de toByte
-        std::vector<uint8_t> tree_vec(tree, tree + 12);
+    void ADRS::setTreeAddress(const uint8_t tree[12]) {
 
-        // Usamos toByte para asegurar el formato correcto
-        std::vector<uint8_t> tree_bytes = ::toByte(tree_vec, 12);
-
-        // Copiamos los bytes al ADRS
+        // En principio ya vienen en bytes luego no es necesaria la conversión.
+        // Simplemente copiar los bytes directamente sin procesar
         for (int i = 0; i < 12; i++) {
-            adrs[4 + i] = tree_bytes[i];
+            addr[4 + i] = tree[i];
         }
     }
+
     // Type and clear - bytes 16-19
-    void setTypeAndClear(ADRS& adrs, uint32_t type) {
-        // Convertir type a vector<uint8_t>
-        std::vector<uint8_t> typeVector;
-        uint32_t temp = type;
+    void ADRS::setTypeAndClear(uint32_t type) {
+        // Convertir type a array de 4 bytes en formato big-endian
+        uint8_t type_arr[4] = {
+                static_cast<uint8_t>((type >> 24) & 0xFF),
+                static_cast<uint8_t>((type >> 16) & 0xFF),
+                static_cast<uint8_t>((type >> 8) & 0xFF),
+                static_cast<uint8_t>(type & 0xFF)
+        };
 
-        // Crear el vector de bytes
-        while (temp > 0 || typeVector.empty()) {
-            typeVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
+        // Convertir el array a vector para toByte
+        std::vector<uint8_t> type_vec(type_arr, type_arr + 4);
 
-        // Invertir para formato big-endian
-        std::reverse(typeVector.begin(), typeVector.end());
+        // Usar toByte para asegurar el formato correcto
+        std::vector<uint8_t> type_bytes = ::toByte(type_vec, 4);
 
-        // Usar el operador de ámbito global para llamar a toByte
-        std::vector<uint8_t> typeBytes = ::toByte(typeVector, 4);
-
-        // Colocarlos en adrs[16:20]
+        // Copiar los bytes al ADRS en la posición 16
         for (int i = 0; i < 4; i++) {
-            adrs[16 + i] = typeBytes[i];
+            addr[16 + i] = type_bytes[i];
         }
 
-        // Clear all fields that follow (bytes 20-31)
+        // Limpiar todos los campos que siguen (bytes 20-31)
         for (int i = 20; i < 32; i++) {
-            adrs[i] = 0;
+            addr[i] = 0;
         }
     }
 
-    // KeyPair address - bytes 20-23
-    void setKeyPairAddress(ADRS& adrs, uint32_t keyPair) {
-        // Convertir uint32_t a vector<uint8_t>
-        std::vector<uint8_t> keyPairVector;
-        uint32_t temp = keyPair;
+    // KeyPair address - bytes 20-23 (little-endian)
+    void ADRS::setKeyPairAddress(uint32_t keyPair) {
+        // Convertir keyPair a array de 4 bytes en formato big-endian
+        uint8_t keyPair_arr[4] = {
+                static_cast<uint8_t>((keyPair >> 24) & 0xFF),
+                static_cast<uint8_t>((keyPair >> 16) & 0xFF),
+                static_cast<uint8_t>((keyPair >> 8) & 0xFF),
+                static_cast<uint8_t>(keyPair & 0xFF)
+        };
 
-        // Agregar bytes en orden inverso (comenzando por el menos significativo)
-        while (temp > 0 || keyPairVector.empty()) {
-            keyPairVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
+        // Convertir el array a vector para toByte
+        std::vector<uint8_t> keyPair_vec(keyPair_arr, keyPair_arr + 4);
 
-        // Invertir para tener formato big-endian
-        std::reverse(keyPairVector.begin(), keyPairVector.end());
+        // Usar toByte para asegurar el formato correcto
+        std::vector<uint8_t> keyPair_bytes = ::toByte(keyPair_vec, 4);
 
-        // Usar la implementación de toByte
-        std::vector<uint8_t> keyPairBytes = ::toByte(keyPairVector, 4);
-
-        // Copiamos los bytes a las posiciones 20-23
+        // Copiar los bytes al ADRS en la posición 20
         for (int i = 0; i < 4; i++) {
-            adrs[20 + i] = keyPairBytes[i];
+            addr[20 + i] = keyPair_bytes[i];
         }
     }
 
     // Chain address - bytes 24-27
-    void setChainAddress(ADRS& adrs, uint32_t chain) {
-        // Convertir chain a vector
-        std::vector<uint8_t> chainVector;
-        uint32_t temp = chain;
+    void ADRS::setChainAddress(uint32_t chain) {
+        // Crear representación big-endian del valor uint32_t
+        std::vector<uint8_t> input = {
+                static_cast<uint8_t>((chain >> 24) & 0xFF),  // Byte más significativo primero
+                static_cast<uint8_t>((chain >> 16) & 0xFF),
+                static_cast<uint8_t>((chain >> 8) & 0xFF),
+                static_cast<uint8_t>(chain & 0xFF)          // Byte menos significativo al final
+        };
 
-        // Crear vector de bytes a partir del entero
-        while (temp > 0 || chainVector.empty()) {
-            chainVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
+        // Convertir a formato de longitud fija usando toByte
+        std::vector<uint8_t> chain_bytes = ::toByte(input, 4);
 
-        // Invertir para tener formato big-endian
-        std::reverse(chainVector.begin(), chainVector.end());
-
-        // Convertir a formato de 4 bytes
-        std::vector<uint8_t> chainBytes = ::toByte(chainVector, 4);
-
-        // Colocar los bytes en ADRS[24:28]
+        // Copiar a la posición apropiada en la dirección
         for (int i = 0; i < 4; i++) {
-            adrs[24 + i] = chainBytes[i];
+            addr[24 + i] = chain_bytes[i];
         }
     }
 
     // Tree Height - bytes 24-27 (misma posición que Chain)
-    void setTreeHeight(ADRS& adrs, uint32_t height) {
-        // Convertir height a vector
-        std::vector<uint8_t> heightVector;
-        uint32_t temp = height;
+    void ADRS::setTreeHeight(uint32_t height) {
+        // Crear representación big-endian del valor uint32_t
+        std::vector<uint8_t> input = {
+                static_cast<uint8_t>((height >> 24) & 0xFF),  // Byte más significativo primero
+                static_cast<uint8_t>((height >> 16) & 0xFF),
+                static_cast<uint8_t>((height >> 8) & 0xFF),
+                static_cast<uint8_t>(height & 0xFF)          // Byte menos significativo al final
+        };
 
-        // Crear vector de bytes a partir del entero
-        while (temp > 0 || heightVector.empty()) {
-            heightVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
+        // Convertir a formato de longitud fija usando toByte
+        std::vector<uint8_t> height_bytes = ::toByte(input, 4);
 
-        // Invertir para tener formato big-endian
-        std::reverse(heightVector.begin(), heightVector.end());
-
-        // Convertir a formato de 4 bytes
-        std::vector<uint8_t> heightBytes = ::toByte(heightVector, 4);
-
-        // Colocar los bytes en ADRS[24:28]
+        // Copiar a la posición apropiada en la dirección
         for (int i = 0; i < 4; i++) {
-            adrs[24 + i] = heightBytes[i];
+            addr[24 + i] = height_bytes[i];
         }
     }
 
     // Hash address - bytes 28-31
-    void setHashAddress(ADRS& adrs, uint32_t hash) {
-        // Convertir hash a vector
-        std::vector<uint8_t> hashVector;
-        uint32_t temp = hash;
+    void ADRS::setHashAddress(uint32_t hash) {
+        // Crear array de bytes en formato big-endian
+        uint8_t hash_arr[4] = {
+                static_cast<uint8_t>((hash >> 24) & 0xFF),  // Byte más significativo primero
+                static_cast<uint8_t>((hash >> 16) & 0xFF),
+                static_cast<uint8_t>((hash >> 8) & 0xFF),
+                static_cast<uint8_t>(hash & 0xFF)           // Byte menos significativo al final
+        };
 
-        // Crear vector de bytes a partir del entero
-        while (temp > 0 || hashVector.empty()) {
-            hashVector.push_back(temp & 0xFF);
-            temp >>= 8;
+        // Convertir el array a vector para usar toByte
+        std::vector<uint8_t> hash_vec(hash_arr, hash_arr + 4);
+
+        // Usar toByte para asegurar el formato correcto
+        std::vector<uint8_t> hash_bytes = ::toByte(hash_vec, 4);
+
+        // Copiar los bytes al ADRS en la posición 28
+        for (int i = 0; i < 4; i++) {
+            addr[28 + i] = hash_bytes[i];
         }
+    }
 
-        // Invertir para tener formato big-endian
-        std::reverse(hashVector.begin(), hashVector.end());
+    // Tree Index - bytes 28-31 (same position as Hash)
+    void ADRS::setTreeIndex(uint32_t index) {
+        // Crear array de bytes en formato big-endian
+        uint8_t index_arr[4] = {
+                static_cast<uint8_t>((index >> 24) & 0xFF),  // Byte más significativo primero
+                static_cast<uint8_t>((index >> 16) & 0xFF),
+                static_cast<uint8_t>((index >> 8) & 0xFF),
+                static_cast<uint8_t>(index & 0xFF)           // Byte menos significativo al final
+        };
 
-        // Convertir a formato de 4 bytes
-        std::vector<uint8_t> hashBytes = ::toByte(hashVector, 4);
+        // Convertir el array a vector para usar toByte
+        std::vector<uint8_t> index_vec(index_arr, index_arr + 4);
+
+        // Usar toByte para asegurar el formato correcto
+        std::vector<uint8_t> indexBytes = ::toByte(index_vec, 4);
 
         // Colocar los bytes en ADRS[28:32]
         for (int i = 0; i < 4; i++) {
-            adrs[28 + i] = hashBytes[i];
+            addr[28 + i] = indexBytes[i];
         }
     }
 
-// Tree Index - bytes 28-31 (same position as Hash)
-    void setTreeIndex(ADRS& adrs, uint32_t index) {
-        // Convertir index a vector
-        std::vector<uint8_t> indexVector;
-        uint32_t temp = index;
-
-        // Crear vector de bytes a partir del entero
-        while (temp > 0 || indexVector.empty()) {
-            indexVector.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
-
-        // Invertir para tener formato big-endian
-        std::reverse(indexVector.begin(), indexVector.end());
-
-        // Convertir a formato de 4 bytes
-        std::vector<uint8_t> indexBytes = ::toByte(indexVector, 4);
-
-        // Colocar los bytes en ADRS[28:32]
-        for (int i = 0; i < 4; i++) {
-            adrs[28 + i] = indexBytes[i];
-        }
-    }
-
-    uint32_t getTreeIndex(const ADRS& adrs) {
-        // Extract bytes 28-31 from the ADRS
-        std::vector<uint8_t> bytes;
-        for (int i = 28; i < 32; i++) {
-            bytes.push_back(adrs[i]);
-        }
-
-        // Convert to integer using toInt
-        return static_cast<uint32_t>(toInt(bytes, 4));
-    }
-    uint32_t getKeyPairAddress(const ADRS& adrs) {
-        // Extract bytes 20-23 from the ADRS
+    // Get KeyPair address from ADRS (little-endian)
+    uint32_t ADRS::getKeyPairAddress() const {
+        // Extraer bytes 20-23 del ADRS
         std::vector<uint8_t> bytes;
         for (int i = 20; i < 24; i++) {
-            bytes.push_back(adrs[i]);
+            bytes.push_back(addr[i]);
         }
 
-        // Convert to integer using toInt
-        return static_cast<uint32_t>(toInt(bytes, 4));
+        // Convertir de little-endian a entero
+        return static_cast<uint32_t>(
+                (static_cast<uint32_t>(bytes[3]) << 24) |
+                (static_cast<uint32_t>(bytes[2]) << 16) |
+                (static_cast<uint32_t>(bytes[1]) << 8) |
+                (static_cast<uint32_t>(bytes[0]))
+        );
     }
-}
+
+    // Get Tree Index - bytes 28-31
+    uint32_t ADRS::getTreeIndex() const {
+        // Extraer bytes 28-31 del ADRS
+        std::vector<uint8_t> bytes;
+        for (int i = 28; i < 32; i++) {
+            bytes.push_back(addr[i]);
+        }
+
+        // Convertir de little-endian a entero (igual que getKeyPairAddress)
+        return static_cast<uint32_t>(
+                (static_cast<uint32_t>(bytes[3]) << 24) |
+                (static_cast<uint32_t>(bytes[2]) << 16) |
+                (static_cast<uint32_t>(bytes[1]) << 8)  |
+                (static_cast<uint32_t>(bytes[0]))
+        );
+    }
+
+
 
 // Algorithm 1: gen_len2
-uint64_t gen_len2(uint64_t n, uint64_t lg_w) {
+uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
     uint64_t w = 1ULL << lg_w;  // w = 2^lg_w
 
     // len1 = ceil((8 * n + lg_w - 1) / lg_w)
@@ -240,7 +244,7 @@ uint64_t gen_len2(uint64_t n, uint64_t lg_w) {
 }
 
 // Algorithm 2: toInt
-uint64_t toInt(const std::vector<uint8_t>& X, uint64_t n) {
+uint32_t toInt(const std::vector<uint8_t>& X, uint64_t n) {
     if (X.size() < n) {
         throw std::invalid_argument("Input array is too short");
     }

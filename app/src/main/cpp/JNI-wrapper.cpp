@@ -31,7 +31,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_genLen2(JNIEnv *env, jobject thiz,
  * Signature: ([BJ)J
  */
 JNIEXPORT jlong JNICALL
-Java_com_revelacion1_tfg_1parte1_FunctionLink_toInt(JNIEnv *env, jobject thiz, jbyteArray x, jlong n) {
+Java_com_revelacion1_tfg_1parte1_FunctionLink_toInt(JNIEnv *env, jobject thiz, jbyteArray x, jint n) {
     jsize len = env->GetArrayLength(x);
     if (len < n) {
         jclass exceptionClass = env->FindClass("java/lang/IllegalArgumentException");
@@ -57,27 +57,25 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_toInt(JNIEnv *env, jobject thiz, j
  * Signature: (JJ)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_com_revelacion1_tfg_1parte1_FunctionLink_toByte(JNIEnv *env, jobject thiz, jlong x, jlong n) {
+Java_com_revelacion1_tfg_1parte1_FunctionLink_toByte(JNIEnv *env, jobject thiz, jlong x, jint n) {
     try {
-        // Primero convertir el jlong a un vector<uint8_t>
         std::vector<uint8_t> xVector;
         uint64_t temp = static_cast<uint64_t>(x);
 
-        // Crear el vector de bytes
+        // Convertir jlong a vector de bytes (big-endian)
         while (temp > 0 || xVector.empty()) {
             xVector.push_back(temp & 0xFF);
             temp >>= 8;
         }
-
-        // Invertir para formato big-endian
         std::reverse(xVector.begin(), xVector.end());
 
-        // Usar el operador de ámbito global para llamar a toByte
+        // Llamar a la función C++ toByte
         std::vector<uint8_t> result = toByte(xVector, static_cast<uint64_t>(n));
 
-        // Convertir el resultado a un jbyteArray de Java
+        // Convertir resultado a jbyteArray
         jbyteArray byteArray = env->NewByteArray(result.size());
         env->SetByteArrayRegion(byteArray, 0, result.size(), reinterpret_cast<jbyte*>(result.data()));
+
         return byteArray;
     } catch (const std::exception& e) {
         jclass exceptionClass = env->FindClass("java/lang/RuntimeException");
@@ -85,6 +83,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_toByte(JNIEnv *env, jobject thiz, 
         return nullptr;
     }
 }
+
 
 /*
  * Class:     com_revelacion1_tfg_parte1_ExampleUnitTest
@@ -188,7 +187,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setLayerAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint layer) {
     try {
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-        adrs_ops::setLayerAddress(*adrs, static_cast<uint32_t>(layer));
+        adrs->setLayerAddress(static_cast<uint32_t>(layer));
     } catch (const std::exception& e) {
         throwJavaException(env, "java/lang/RuntimeException", e.what());
     }
@@ -204,22 +203,26 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jbyteArray treeArray) {
 
     try {
-        if (adrsPtr == 0 || treeArray == nullptr) return ; // Asegurar que los parametros se meten de forma correcta
+        if (adrsPtr == 0 || treeArray == nullptr) return;
+
         jsize len = env->GetArrayLength(treeArray);
         if (len != 12) {
             throwJavaException(env, "java/lang/IllegalArgumentException", "Tree address must be 12 bytes");
             return;
         }
-        // Extraer los bytes del array
+
+        // Extraer los bytes del array correctamente
         jbyte buffer[12];
         env->GetByteArrayRegion(treeArray, 0, len, buffer);
-        // Convertir el array de bytes a un array de uint8_t y llamar a la funcion
+
+        // Convertir jbyte* a uint8_t* - esto es seguro
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-        adrs_ops::setTreeAddress(*adrs, reinterpret_cast<const uint8_t*>(buffer)); // Convertir a uint8_t (dado que convertimos un tipo en java a C++ no se permite usar static_cast)
-        } catch (const std::exception& e) {
+        adrs->setTreeAddress(reinterpret_cast<const uint8_t*>(buffer));
+
+    } catch (const std::exception& e) {
         throwJavaException(env, "java/lang/RuntimeException", e.what());
-        }
     }
+}
 
 /*
  * Class:     com_revelacion1_tfg_parte1_FunctionLink
@@ -231,7 +234,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTypeAndClear(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint type) {
     try {
     ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-    adrs_ops::setTypeAndClear(*adrs, static_cast<uint32_t>(type));
+    adrs->setTypeAndClear(static_cast<uint32_t>(type));
     } catch (const std::exception& e) {
     throwJavaException(env, "java/lang/RuntimeException", e.what());
     }
@@ -245,12 +248,12 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTypeAndClear(
 JNIEXPORT void JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_setKeyPairAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint keyPair) {
-try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-adrs_ops::setKeyPairAddress(*adrs, static_cast<uint32_t>(keyPair));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-}
+    try {
+        ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+        adrs->setKeyPairAddress(static_cast<uint32_t>(keyPair));
+    } catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+    }
 }
 
 /*
@@ -261,12 +264,13 @@ throwJavaException(env, "java/lang/RuntimeException", e.what());
 JNIEXPORT void JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_setChainAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint chain) {
-try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-adrs_ops::setChainAddress(*adrs, static_cast<uint32_t>(chain));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-}
+    try {
+        ADRS *adrs = reinterpret_cast<ADRS *>(adrsPtr);
+        adrs->setChainAddress(static_cast<uint32_t>(chain));
+    }
+    catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+    }
 }
 
 /*
@@ -278,11 +282,11 @@ JNIEXPORT void JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeHeight(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint height) {
 try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-adrs_ops::setTreeHeight(*adrs, static_cast<uint32_t>(height));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-}
+    ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+    adrs->setTreeHeight(static_cast<uint32_t>(height));
+    } catch (const std::exception& e) {
+    throwJavaException(env, "java/lang/RuntimeException", e.what());
+    }
 }
 
 /*
@@ -293,12 +297,12 @@ throwJavaException(env, "java/lang/RuntimeException", e.what());
 JNIEXPORT void JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_setHashAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint hash) {
-try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-adrs_ops::setHashAddress(*adrs, static_cast<uint32_t>(hash));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-}
+    try {
+    ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+    adrs->setHashAddress(static_cast<uint32_t>(hash));
+    } catch (const std::exception& e) {
+    throwJavaException(env, "java/lang/RuntimeException", e.what());
+    }
 }
 
 /*
@@ -310,41 +314,41 @@ JNIEXPORT void JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeIndex(
         JNIEnv* env, jobject /* this */, jlong adrsPtr, jint index) {
 try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-adrs_ops::setTreeIndex(*adrs, static_cast<uint32_t>(index));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-}
+    ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+    adrs->setTreeIndex(static_cast<uint32_t>(index));
+    } catch (const std::exception& e) {
+    throwJavaException(env, "java/lang/RuntimeException", e.what());
+    }
 }
 
 /*
  * Class:     com_revelacion1_tfg_parte1_FunctionLink
  * Method:    getKeyPairAddress
- * Signature: (J)I
+ * Signature: (J)J
  */
-JNIEXPORT jint JNICALL
+JNIEXPORT jlong JNICALL
         Java_com_revelacion1_tfg_1parte1_FunctionLink_getKeyPairAddress(
         JNIEnv* env, jobject /* this */, jlong adrsPtr) {
-try {
-ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-return static_cast<jint>(adrs_ops::getKeyPairAddress(*adrs));
-} catch (const std::exception& e) {
-throwJavaException(env, "java/lang/RuntimeException", e.what());
-return 0;
-}
+    try {
+    ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+    return static_cast<jlong>(adrs->getKeyPairAddress());
+    } catch (const std::exception& e) {
+    throwJavaException(env, "java/lang/RuntimeException", e.what());
+    return 0;
+    }
 }
 
 /*
  * Class:     com_revelacion1_tfg_parte1_FunctionLink
  * Method:    getTreeIndex
- * Signature: (J)I
+ * Signature: (J)J
  */
-JNIEXPORT jint JNICALL
+JNIEXPORT jlong JNICALL
         Java_com_revelacion1_tfg_1parte1_FunctionLink_getTreeIndex(
         JNIEnv* env, jobject /* this */, jlong adrsPtr) {
     try {
     ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-    return static_cast<jint>(adrs_ops::getTreeIndex(*adrs));
+    return static_cast<jlong>(adrs->getTreeIndex());
     } catch (const std::exception& e) {
     throwJavaException(env, "java/lang/RuntimeException", e.what());
     return 0;
