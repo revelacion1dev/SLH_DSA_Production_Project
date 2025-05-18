@@ -27,6 +27,12 @@ class FIPS205Tester {
         // Test ADRS (Data structure)
         results.add(testADRS())
 
+        // Tests específicos con SHAKE256
+        results.add(testWOTSWithSHAKE256())
+        results.add(testFORSWithSHAKE256())
+        results.add(testXMSSWithSHAKE256())
+        results.add(testVectorsWithSHAKE256())
+
         return results
     }
 
@@ -239,27 +245,31 @@ class FIPS205Tester {
             // Probar setLayerAddress
             adrsWrapper.setLayerAddress(0x12345678)
             bytes = adrsWrapper.getAddressBytes()
-            // Verificar orden little-endian (bytes menos significativos primero)
-            if (bytes[0] != 0x78.toByte() || bytes[1] != 0x56.toByte() ||
-                bytes[2] != 0x34.toByte() || bytes[3] != 0x12.toByte()) {
+            // Verificar orden big-endian (bytes más significativos primero)
+            if (bytes[0] != 0x12.toByte() || bytes[1] != 0x34.toByte() ||
+                bytes[2] != 0x56.toByte() || bytes[3] != 0x78.toByte()) {
                 return TestResult("ADRS", false,
                     "setLayerAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
 
             // Convertir un valor a bytes para setTreeAddress (12bytes)
-            val treeValue = 0x123456789ABC
+            val treeValue = 0x123456789ABCL
             val treeBytes = ByteArray(12)
-            // Llenar en orden little-endian
+            // Llenar en orden big-endian
             for (i in 0 until 6) {
-                treeBytes[i] = ((treeValue shr (8 * i)) and 0xFF).toByte()
+                treeBytes[i] = ((treeValue shr (8 * (5 - i))) and 0xFF).toByte()
+            }
+            // Rellenar el resto con ceros
+            for (i in 6 until 12) {
+                treeBytes[i] = 0
             }
             adrsWrapper.setTreeAddress(treeBytes)
             bytes = adrsWrapper.getAddressBytes()
 
-            // Verificar los 6 bytes en orden little-endian
-            if (bytes[4] != 0xBC.toByte() || bytes[5] != 0x9A.toByte() ||
-                bytes[6] != 0x78.toByte() || bytes[7] != 0x56.toByte() ||
-                bytes[8] != 0x34.toByte() || bytes[9] != 0x12.toByte()) {
+            // Verificar los bytes en orden big-endian
+            if (bytes[4] != 0x12.toByte() || bytes[5] != 0x34.toByte() ||
+                bytes[6] != 0x56.toByte() || bytes[7] != 0x78.toByte() ||
+                bytes[8] != 0x9A.toByte() || bytes[9] != 0xBC.toByte()) {
                 return TestResult("ADRS", false,
                     "setTreeAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -267,9 +277,9 @@ class FIPS205Tester {
             // Probar setTypeAndClear (tipo 2)
             adrsWrapper.setTypeAndClear(2)
             bytes = adrsWrapper.getAddressBytes()
-            // En little-endian, el valor 2 sería 02 00 00 00
-            if (bytes[16] != 0x02.toByte() || bytes[17] != 0x00.toByte() ||
-                bytes[18] != 0x00.toByte() || bytes[19] != 0x00.toByte()) {
+            // En big-endian, el valor 2 sería 00 00 00 02
+            if (bytes[16] != 0x00.toByte() || bytes[17] != 0x00.toByte() ||
+                bytes[18] != 0x00.toByte() || bytes[19] != 0x02.toByte()) {
                 return TestResult("ADRS", false,
                     "setTypeAndClear no estableció el tipo correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -287,10 +297,10 @@ class FIPS205Tester {
             adrsWrapper.setKeyPairAddress(keyPairValue)
             bytes = adrsWrapper.getAddressBytes()
 
-            // Verificamos que los bytes se almacenen correctamente en little-endian
-            // 0xABCD en little-endian debería ser CD AB 00 00
-            if (bytes[20] != 0xCD.toByte() || bytes[21] != 0xAB.toByte() ||
-                bytes[22] != 0x00.toByte() || bytes[23] != 0x00.toByte()) {
+            // Verificamos que los bytes se almacenen correctamente en big-endian
+            // 0xABCD en big-endian debería ser 00 00 AB CD
+            if (bytes[20] != 0x00.toByte() || bytes[21] != 0x00.toByte() ||
+                bytes[22] != 0xAB.toByte() || bytes[23] != 0xCD.toByte()) {
                 return TestResult("ADRS", false,
                     "setKeyPairAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -305,9 +315,9 @@ class FIPS205Tester {
             // Probar setChainAddress
             adrsWrapper.setChainAddress(0x1234)
             bytes = adrsWrapper.getAddressBytes()
-            // En little-endian sería 34 12 00 00
-            if (bytes[24] != 0x34.toByte() || bytes[25] != 0x12.toByte() ||
-                bytes[26] != 0x00.toByte() || bytes[27] != 0x00.toByte()) {
+            // En big-endian sería 00 00 12 34
+            if (bytes[24] != 0x00.toByte() || bytes[25] != 0x00.toByte() ||
+                bytes[26] != 0x12.toByte() || bytes[27] != 0x34.toByte()) {
                 return TestResult("ADRS", false,
                     "setChainAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -315,9 +325,9 @@ class FIPS205Tester {
             // Probar setHashAddress
             adrsWrapper.setHashAddress(0x5678)
             bytes = adrsWrapper.getAddressBytes()
-            // En little-endian sería 78 56 00 00
-            if (bytes[28] != 0x78.toByte() || bytes[29] != 0x56.toByte() ||
-                bytes[30] != 0x00.toByte() || bytes[31] != 0x00.toByte()) {
+            // En big-endian sería 00 00 56 78
+            if (bytes[28] != 0x00.toByte() || bytes[29] != 0x00.toByte() ||
+                bytes[30] != 0x56.toByte() || bytes[31] != 0x78.toByte()) {
                 return TestResult("ADRS", false,
                     "setHashAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -325,9 +335,9 @@ class FIPS205Tester {
             // Probar setTreeHeight (modifica los mismos bytes que setChainAddress)
             adrsWrapper.setTreeHeight(0x9ABC)
             bytes = adrsWrapper.getAddressBytes()
-            // En little-endian sería BC 9A 00 00
-            if (bytes[24] != 0xBC.toByte() || bytes[25] != 0x9A.toByte() ||
-                bytes[26] != 0x00.toByte() || bytes[27] != 0x00.toByte()) {
+            // En big-endian sería 00 00 9A BC
+            if (bytes[24] != 0x00.toByte() || bytes[25] != 0x00.toByte() ||
+                bytes[26] != 0x9A.toByte() || bytes[27] != 0xBC.toByte()) {
                 return TestResult("ADRS", false,
                     "setTreeHeight no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -335,9 +345,9 @@ class FIPS205Tester {
             // Probar setTreeIndex (modifica los mismos bytes que setHashAddress)
             adrsWrapper.setTreeIndex(0xDEF0)
             bytes = adrsWrapper.getAddressBytes()
-            // En little-endian sería F0 DE 00 00
-            if (bytes[28] != 0xF0.toByte() || bytes[29] != 0xDE.toByte() ||
-                bytes[30] != 0x00.toByte() || bytes[31] != 0x00.toByte()) {
+            // En big-endian sería 00 00 DE F0
+            if (bytes[28] != 0x00.toByte() || bytes[29] != 0x00.toByte() ||
+                bytes[30] != 0xDE.toByte() || bytes[31] != 0xF0.toByte()) {
                 return TestResult("ADRS", false,
                     "setTreeIndex no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
             }
@@ -355,6 +365,89 @@ class FIPS205Tester {
         } finally {
             // Liberar recursos
             adrsWrapper.dispose()
+        }
+    }
+
+    private fun testWOTSWithSHAKE256(): TestResult {
+        try {
+            // Parámetros WOTS+ con SHAKE256
+            val n = 32 // Tamaño de salida del hash en bytes (256 bits)
+            val lg_w = 4 // log2(w) = 4 para w=16
+
+            // Calcular len1 y len2 según FIPS 205
+            val len1 = (8 * n + lg_w - 1) / lg_w // ⌈8n/lg_w⌉
+            val len2 = FunctionLink().genLen2(n.toLong(), lg_w.toLong()).toInt()
+            val len = len1 + len2
+
+            // Vector de prueba para SHAKE256
+            // (Estos son valores de ejemplo, en un caso real usarías vectores oficiales)
+            val skSeed = ByteArray(n) { 0x12 } // Semilla secreta constante
+            val pkSeed = ByteArray(n) { 0x34 } // Semilla pública constante
+
+            // Crear y configurar ADRS
+            val adrs = ADRSWrapper()
+            adrs.setLayerAddress(0)
+            adrs.setTreeAddress(ByteArray(12) { 0 })
+            adrs.setTypeAndClear(0) // WOTS_PRF
+            adrs.setKeyPairAddress(0)
+
+            // Generar clave pública WOTS+
+            val pk = FunctionLink().wots_pkGen(skSeed, pkSeed, adrs.getAddressBytes())
+
+            // Verificar el tamaño de la clave pública
+            if (pk.size != n) {
+                return TestResult("WOTS+ (SHAKE256)", false,
+                    "Tamaño de clave pública incorrecto. Esperado: $n, Obtenido: ${pk.size}")
+            }
+
+            // Mensaje para firmar (usando un valor determinista para reproducibilidad)
+            val message = ByteArray(n) { 0x56 }
+
+            // Establecer ADRS para firma
+            adrs.setTypeAndClear(0) // WOTS_PRF para firma
+
+            // Generar firma WOTS+
+            val signature = FunctionLink().wots_sign(message, skSeed, pkSeed, adrs.getAddressBytes())
+
+            // Verificar tamaño de firma
+            val expectedSigSize = len * n
+            if (signature.size != expectedSigSize) {
+                return TestResult("WOTS+ (SHAKE256)", false,
+                    "Tamaño de firma incorrecto. Esperado: $expectedSigSize, Obtenido: ${signature.size}")
+            }
+
+            // Configurar ADRS para verificación
+            adrs.setTypeAndClear(1) // WOTS_HASH para verificación
+
+            // Verificar firma reconstruyendo la clave pública
+            val reconstructedPk = FunctionLink().wots_pkFromSig(signature, message, pkSeed, adrs.getAddressBytes())
+
+            // Comparar la clave reconstruida con la original
+            if (!reconstructedPk.contentEquals(pk)) {
+                return TestResult("WOTS+ (SHAKE256)", false,
+                    "La clave pública reconstruida no coincide con la original")
+            }
+
+            // Prueba con mensaje modificado
+            val modifiedMessage = message.clone()
+            modifiedMessage[0] = (modifiedMessage[0] + 1).toByte()
+
+            val reconstructedPkForModified = FunctionLink().wots_pkFromSig(
+                signature, modifiedMessage, pkSeed, adrs.getAddressBytes())
+
+            if (reconstructedPkForModified.contentEquals(pk)) {
+                return TestResult("WOTS+ (SHAKE256)", false,
+                    "La firma debería fallar con mensaje modificado, pero fue válida")
+            }
+
+            // Imprimir resultados exitosos con valores específicos para referencia
+            val pkHex = pk.joinToString("") { String.format("%02x", it) }
+            val sigHex = signature.take(32).toByteArray().joinToString("") { String.format("%02x", it) }
+
+            return TestResult("WOTS+ (SHAKE256)", true,
+                "Prueba exitosa. PK: ${pkHex.take(16)}..., SIG: ${sigHex.take(16)}...")
+        } catch (e: Exception) {
+            return TestResult("WOTS+ (SHAKE256)", false, "Error: ${e.message}")
         }
     }
 

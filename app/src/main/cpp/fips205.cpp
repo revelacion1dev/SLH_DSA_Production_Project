@@ -1,236 +1,276 @@
 // fips205.cpp
 #include "fips205.h"
+#include <openssl/evp.h>
+#include <openssl/err.h>
+
+// Definición de tipos en uint32_t debido a que el tipo ocupa 4 bytes
+constexpr uint32_t WOTS_HASH = 0x00;
+constexpr uint32_t WOTS_PK = 0x01;
+constexpr uint32_t WOTS_TREES = 0x02;
+constexpr uint32_t FORS_TREE = 0x03;
+constexpr uint32_t FORS_ROOTS = 0x04;
+constexpr uint32_t WOTS_PRF = 0x05;
+constexpr uint32_t FORS_PRF = 0x06;
+
+// Enumeración para los parámetros de SLH-DSA
+enum class SLH_DSA_ParamSet {
+    SHA2_128S,
+    SHAKE_128S,
+    SHA2_128F,
+    SHAKE_128F,
+    SHA2_192S,
+    SHAKE_192S,
+    SHA2_192F,
+    SHAKE_192F,
+    SHA2_256S,
+    SHAKE_256S,
+    SHA2_256F,
+    SHAKE_256F,
+    PARAM_COUNT
+};
+
+// Configuración por defecto del esquema
+struct SLH_DSA_Config {
+    static constexpr SLH_DSA_ParamSet SCHEMA = SLH_DSA_ParamSet::SHAKE_256S;
+};
+
+// Estructura de parámetros para cada esquema
+struct SLH_DSA_Params {
+    const char* name;
+    uint32_t n, h, d, h_prima, a, k, lg_w, m, security_category;
+    uint32_t pk_bytes, sig_bytes;
+    bool is_shake;
+};
+
+// Tabla de parámetros para cada variante de SLH-DSA
+constexpr SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] = {
+        {"SLH-DSA-SHA2-128s",   16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  false},
+        {"SLH-DSA-SHAKE-128s",  16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  true },
+        {"SLH-DSA-SHA2-128f",   16, 66, 22,  3,  6, 33, 4, 34, 1, 32, 17088,  false},
+        {"SLH-DSA-SHAKE-128f",  16, 66, 22,  3,  6, 33, 4, 34, 1, 32, 17088,  true },
+        {"SLH-DSA-SHA2-192s",   24, 63,  7,  9, 14, 17, 4, 39, 3, 48, 16224,  false},
+        {"SLH-DSA-SHAKE-192s",  24, 63,  7,  9, 14, 17, 4, 39, 3, 48, 16224,  true },
+        {"SLH-DSA-SHA2-192f",   24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  false},
+        {"SLH-DSA-SHAKE-192f",  24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  true },
+        {"SLH-DSA-SHA2-256s",   32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  false},
+        {"SLH-DSA-SHAKE-256s",  32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  true },
+        {"SLH-DSA-SHA2-256f",   32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  false},
+        {"SLH-DSA-SHAKE-256f",  32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  true }
+};
+
+// Función para obtener los parámetros de un esquema dado
+inline const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set) {
+    size_t index = static_cast<size_t>(set);
+    if (index >= static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT))
+        return nullptr;
+    return &PARAMS[index];
+}
 
 
-// ADRS operations implementations
-
-    ADRS::ADRS() {
-        addr.fill(0);
+//
+// Función SHAKE256
+bool computeShake256(const ByteVector& input, ByteVector& output, size_t outputLen) {
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (ctx == NULL) {
+        return false;
     }
 
-    // Método para obtener la dirección completa como puntero (borrar)
-    const uint8_t* ADRS::getAddress() const {
-        return addr.data(); // Devuelve un puntero a los bytes de la dirección
+    output.resize(outputLen);
+    bool success = false;
+
+    // Inicializar con SHAKE256 (El engine se define como nulo, seria interesante aplicar alguno de cara a optimizar la
+    // implementación por hardware)
+    if (!EVP_DigestInit_ex(ctx, EVP_shake256(), NULL)) {
+        EVP_MD_CTX_free(ctx);
+        return false;
     }
 
-    // Operador para acceder directamente a los bytes
-    uint8_t& ADRS::operator[](size_t index) {
-        return addr[index];
+    // Procesar los datos de entrada
+    if (!EVP_DigestUpdate(ctx, input.data(), input.size())) {
+        EVP_MD_CTX_free(ctx);
+        return false;
     }
 
-    // Operador para acceder directamente a los bytes (versión const)
-    const uint8_t& ADRS::operator[](size_t index) const {
-        return addr[index];
+    // Finalizar la operación usando XOF con la longitud deseada
+    if (!EVP_DigestFinalXOF(ctx, output.data(), outputLen)) {
+        EVP_MD_CTX_free(ctx);
+        return false;
     }
 
-    // Tamaño de la dirección en bytes
-    constexpr size_t ADRS::size() {
-        return 32;
+    success = true;
+    EVP_MD_CTX_free(ctx);
+    return success;
+}
+
+// Función para concatenar y hacer hash
+bool concatenateAndHash(const std::vector<ByteVector>& inputs, ByteVector& output, size_t outputLen) {
+    // Calcular tamaño total
+    size_t totalSize = 0;
+    for (const auto& input : inputs) {
+        totalSize += input.size();
     }
 
-    // Bytes 0-3 (big-endian)
-    void ADRS::setLayerAddress(uint32_t layer) {
-        // Crear representación big-endian
-        std::vector<uint8_t> input = {
-                static_cast<uint8_t>((layer >> 24) & 0xFF),  // Byte más significativo primero
-                static_cast<uint8_t>((layer >> 16) & 0xFF),
-                static_cast<uint8_t>((layer >> 8) & 0xFF),
-                static_cast<uint8_t>(layer & 0xFF)           // Byte menos significativo al final
-        };
+    // Reservar espacio y concatenar
+    ByteVector concatenated;
+    concatenated.reserve(totalSize);
 
-        // Usar toByte para convertir a representación de 4 bytes
-        std::vector<uint8_t> layer_bytes = ::toByte(input, 4);
-
-        // Copiar al ADRS
-        for (int i = 0; i < 4; i++) {
-            addr[i] = layer_bytes[i];
-        }
+    for (const auto& input : inputs) {
+        concatenated.insert(concatenated.end(), input.begin(), input.end());
     }
 
-    // Tree address - bytes 4-15 (contains 3 words)
-    void ADRS::setTreeAddress(const uint8_t tree[12]) {
+    // Calcular hash
+    return computeShake256(concatenated, output, outputLen);
+}
+// Get the parameters based on the schema
+const SLH_DSA_Params* params = get_params(SLH_DSA_Config::SCHEMA);
 
-        // En principio ya vienen en bytes luego no es necesaria la conversión.
-        // Simplemente copiar los bytes directamente sin procesar
-        for (int i = 0; i < 12; i++) {
-            addr[4 + i] = tree[i];
-        }
+// Implementations of hash functions for SLH-DSA with proper parameters
+
+bool H_msg(const ByteVector& R, const ByteVector& PKseed, const ByteVector& PKroot,
+           const ByteVector& M, ByteVector& output) {
+    // Get the correct output length (m value from params)
+    size_t outputLen = params->m;
+    return concatenateAndHash({R, PKseed, PKroot, M}, output, outputLen);
+}
+
+bool PRF(const ByteVector& PKseed, const ByteVector& SKseed, const ByteVector& ADRS,
+         ByteVector& output) {
+    // Output length is n from the parameters
+    size_t outputLen = params->n;
+    return concatenateAndHash({PKseed, ADRS, SKseed}, output, outputLen);
+}
+
+bool PRF_msg(const ByteVector& SKprf, const ByteVector& opt_rand, const ByteVector& M,
+             ByteVector& output) {
+    // Output length is n from the parameters
+    size_t outputLen = params->n;
+    return concatenateAndHash({SKprf, opt_rand, M}, output, outputLen);
+}
+
+bool F(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M1,
+       ByteVector& output) {
+    // Output length is n from the parameters
+    size_t outputLen = params->n;
+    return concatenateAndHash({PKseed, ADRS, M1}, output, outputLen);
+}
+
+bool H(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M2,
+       ByteVector& output) {
+    // Output length is n from the parameters
+    size_t outputLen = params->n;
+    return concatenateAndHash({PKseed, ADRS, M2}, output, outputLen);
+}
+
+bool T_l(const ByteVector& PKseed, const ByteVector& ADRS, std::vector<ByteVector> Ml,
+         ByteVector& output) {
+
+    // Primero concatenamos todos los ByteVector en Ml
+    ByteVector concatenated_Ml;
+    for (const auto& vec : Ml) {
+        concatenated_Ml.insert(concatenated_Ml.end(), vec.begin(), vec.end());
     }
 
-    // Type and clear - bytes 16-19
-    void ADRS::setTypeAndClear(uint32_t type) {
-        // Convertir type a array de 4 bytes en formato big-endian
-        uint8_t type_arr[4] = {
-                static_cast<uint8_t>((type >> 24) & 0xFF),
-                static_cast<uint8_t>((type >> 16) & 0xFF),
-                static_cast<uint8_t>((type >> 8) & 0xFF),
-                static_cast<uint8_t>(type & 0xFF)
-        };
+    // Output length is n from the parameters
+    size_t outputLen = params->n;
+    return concatenateAndHash({PKseed, ADRS, concatenated_Ml}, output, outputLen);
+}
 
-        // Convertir el array a vector para toByte
-        std::vector<uint8_t> type_vec(type_arr, type_arr + 4);
 
-        // Usar toByte para asegurar el formato correcto
-        std::vector<uint8_t> type_bytes = ::toByte(type_vec, 4);
+// Funciones de conversión
+ByteVector uint32ToBytes(uint32_t value) {
+    return {
+            static_cast<uint8_t>((value >> 24) & 0xFF),
+            static_cast<uint8_t>((value >> 16) & 0xFF),
+            static_cast<uint8_t>((value >> 8) & 0xFF),
+            static_cast<uint8_t>(value & 0xFF)
+    };
+}
 
-        // Copiar los bytes al ADRS en la posición 16
-        for (int i = 0; i < 4; i++) {
-            addr[16 + i] = type_bytes[i];
-        }
-
-        // Limpiar todos los campos que siguen (bytes 20-31)
-        for (int i = 20; i < 32; i++) {
-            addr[i] = 0;
-        }
+uint32_t bytesToUint32(const ByteVector& bytes, size_t offset) {
+    if (bytes.size() < offset + 4) {
+        throw std::invalid_argument("Array too small for uint32_t conversion");
     }
 
-    // KeyPair address - bytes 20-23 (little-endian)
-    void ADRS::setKeyPairAddress(uint32_t keyPair) {
-        // Convertir keyPair a array de 4 bytes en formato big-endian
-        uint8_t keyPair_arr[4] = {
-                static_cast<uint8_t>((keyPair >> 24) & 0xFF),
-                static_cast<uint8_t>((keyPair >> 16) & 0xFF),
-                static_cast<uint8_t>((keyPair >> 8) & 0xFF),
-                static_cast<uint8_t>(keyPair & 0xFF)
-        };
+    return (static_cast<uint32_t>(bytes[offset]) << 24) |
+           (static_cast<uint32_t>(bytes[offset+1]) << 16) |
+           (static_cast<uint32_t>(bytes[offset+2]) << 8) |
+           (static_cast<uint32_t>(bytes[offset+3]));
+}
 
-        // Convertir el array a vector para toByte
-        std::vector<uint8_t> keyPair_vec(keyPair_arr, keyPair_arr + 4);
+// Implementación de ADRS
 
-        // Usar toByte para asegurar el formato correcto
-        std::vector<uint8_t> keyPair_bytes = ::toByte(keyPair_vec, 4);
+ADRS::ADRS() {
+    addr.fill(0);
+}
 
-        // Copiar los bytes al ADRS en la posición 20
-        for (int i = 0; i < 4; i++) {
-            addr[20 + i] = keyPair_bytes[i];
-        }
-    }
+uint8_t& ADRS::operator[](size_t index) {
+    return addr[index];
+}
 
-    // Chain address - bytes 24-27
-    void ADRS::setChainAddress(uint32_t chain) {
-        // Crear representación big-endian del valor uint32_t
-        std::vector<uint8_t> input = {
-                static_cast<uint8_t>((chain >> 24) & 0xFF),  // Byte más significativo primero
-                static_cast<uint8_t>((chain >> 16) & 0xFF),
-                static_cast<uint8_t>((chain >> 8) & 0xFF),
-                static_cast<uint8_t>(chain & 0xFF)          // Byte menos significativo al final
-        };
+const uint8_t& ADRS::operator[](size_t index) const {
+    return addr[index];
+}
 
-        // Convertir a formato de longitud fija usando toByte
-        std::vector<uint8_t> chain_bytes = ::toByte(input, 4);
+const uint8_t* ADRS::data() const {
+    return addr.data();
+}
 
-        // Copiar a la posición apropiada en la dirección
-        for (int i = 0; i < 4; i++) {
-            addr[24 + i] = chain_bytes[i];
-        }
-    }
+ByteVector ADRS::toVector() const {
+    return ByteVector(addr.begin(), addr.end());
+}
 
-    // Tree Height - bytes 24-27 (misma posición que Chain)
-    void ADRS::setTreeHeight(uint32_t height) {
-        // Crear representación big-endian del valor uint32_t
-        std::vector<uint8_t> input = {
-                static_cast<uint8_t>((height >> 24) & 0xFF),  // Byte más significativo primero
-                static_cast<uint8_t>((height >> 16) & 0xFF),
-                static_cast<uint8_t>((height >> 8) & 0xFF),
-                static_cast<uint8_t>(height & 0xFF)          // Byte menos significativo al final
-        };
+void ADRS::setLayerAddress(uint32_t layer) {
+    ByteVector bytes = uint32ToBytes(layer);
+    std::copy(bytes.begin(), bytes.end(), addr.begin());
+}
 
-        // Convertir a formato de longitud fija usando toByte
-        std::vector<uint8_t> height_bytes = ::toByte(input, 4);
+void ADRS::setTreeAddress(const uint8_t tree[12]) {
+    std::copy(tree, tree + 12, addr.begin() + 4);
+}
 
-        // Copiar a la posición apropiada en la dirección
-        for (int i = 0; i < 4; i++) {
-            addr[24 + i] = height_bytes[i];
-        }
-    }
+void ADRS::setTypeAndClear(uint32_t type) {
+    ByteVector bytes = uint32ToBytes(type);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 16);
+    std::fill(addr.begin() + 20, addr.end(), 0);
+}
 
-    // Hash address - bytes 28-31
-    void ADRS::setHashAddress(uint32_t hash) {
-        // Crear array de bytes en formato big-endian
-        uint8_t hash_arr[4] = {
-                static_cast<uint8_t>((hash >> 24) & 0xFF),  // Byte más significativo primero
-                static_cast<uint8_t>((hash >> 16) & 0xFF),
-                static_cast<uint8_t>((hash >> 8) & 0xFF),
-                static_cast<uint8_t>(hash & 0xFF)           // Byte menos significativo al final
-        };
+void ADRS::setKeyPairAddress(uint32_t keyPair) {
+    ByteVector bytes = uint32ToBytes(keyPair);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 20);
+}
 
-        // Convertir el array a vector para usar toByte
-        std::vector<uint8_t> hash_vec(hash_arr, hash_arr + 4);
+void ADRS::setChainAddress(uint32_t chain) {
+    ByteVector bytes = uint32ToBytes(chain);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 24);
+}
 
-        // Usar toByte para asegurar el formato correcto
-        std::vector<uint8_t> hash_bytes = ::toByte(hash_vec, 4);
+void ADRS::setTreeHeight(uint32_t height) {
+    ByteVector bytes = uint32ToBytes(height);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 24);
+}
 
-        // Copiar los bytes al ADRS en la posición 28
-        for (int i = 0; i < 4; i++) {
-            addr[28 + i] = hash_bytes[i];
-        }
-    }
+void ADRS::setHashAddress(uint32_t hash) {
+    ByteVector bytes = uint32ToBytes(hash);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 28);
+}
 
-    // Tree Index - bytes 28-31 (same position as Hash)
-    void ADRS::setTreeIndex(uint32_t index) {
-        // Crear array de bytes en formato big-endian
-        uint8_t index_arr[4] = {
-                static_cast<uint8_t>((index >> 24) & 0xFF),  // Byte más significativo primero
-                static_cast<uint8_t>((index >> 16) & 0xFF),
-                static_cast<uint8_t>((index >> 8) & 0xFF),
-                static_cast<uint8_t>(index & 0xFF)           // Byte menos significativo al final
-        };
+void ADRS::setTreeIndex(uint32_t index) {
+    ByteVector bytes = uint32ToBytes(index);
+    std::copy(bytes.begin(), bytes.end(), addr.begin() + 28);
+}
 
-        // Convertir el array a vector para usar toByte
-        std::vector<uint8_t> index_vec(index_arr, index_arr + 4);
+uint32_t ADRS::getKeyPairAddress() const {
+    return bytesToUint32(ByteVector(addr.begin() + 20, addr.begin() + 24));
+}
 
-        // Usar toByte para asegurar el formato correcto
-        std::vector<uint8_t> indexBytes = ::toByte(index_vec, 4);
+uint32_t ADRS::getTreeIndex() const {
+    return bytesToUint32(ByteVector(addr.begin() + 28, addr.begin() + 32));
+}
 
-        // Colocar los bytes en ADRS[28:32]
-        for (int i = 0; i < 4; i++) {
-            addr[28 + i] = indexBytes[i];
-        }
-    }
-
-    // Get KeyPair address from ADRS (little-endian)
-    uint32_t ADRS::getKeyPairAddress() const {
-        // Extraer bytes 20-23 del ADRS
-        std::vector<uint8_t> bytes;
-        for (int i = 20; i < 24; i++) {
-            bytes.push_back(addr[i]);
-        }
-
-        // Convertir de little-endian a entero
-        return static_cast<uint32_t>(
-                (static_cast<uint32_t>(bytes[3]) << 24) |
-                (static_cast<uint32_t>(bytes[2]) << 16) |
-                (static_cast<uint32_t>(bytes[1]) << 8) |
-                (static_cast<uint32_t>(bytes[0]))
-        );
-    }
-
-    // Get Tree Index - bytes 28-31
-    uint32_t ADRS::getTreeIndex() const {
-        // Extraer bytes 28-31 del ADRS
-        std::vector<uint8_t> bytes;
-        for (int i = 28; i < 32; i++) {
-            bytes.push_back(addr[i]);
-        }
-
-        // Convertir de little-endian a entero (igual que getKeyPairAddress)
-        return static_cast<uint32_t>(
-                (static_cast<uint32_t>(bytes[3]) << 24) |
-                (static_cast<uint32_t>(bytes[2]) << 16) |
-                (static_cast<uint32_t>(bytes[1]) << 8)  |
-                (static_cast<uint32_t>(bytes[0]))
-        );
-    }
-
-
-
-// Algorithm 1: gen_len2
+// Algoritmo 1: gen_len2
 uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
     uint64_t w = 1ULL << lg_w;  // w = 2^lg_w
-
-    // len1 = ceil((8 * n + lg_w - 1) / lg_w)
-    uint64_t len1 = (8 * n + lg_w - 1) / lg_w; // El resultado se trunca automaticamente
-
+    uint64_t len1 = (8 * n + lg_w - 1) / lg_w;
     uint64_t max_checksum = len1 * (w - 1);
     uint64_t len2 = 1;
     uint64_t capacity = w;
@@ -243,8 +283,8 @@ uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
     return len2;
 }
 
-// Algorithm 2: toInt
-uint32_t toInt(const std::vector<uint8_t>& X, uint64_t n) {
+// Algoritmo 2: toInt
+uint32_t toInt(const ByteVector& X, uint64_t n) {
     if (X.size() < n) {
         throw std::invalid_argument("Input array is too short");
     }
@@ -256,9 +296,9 @@ uint32_t toInt(const std::vector<uint8_t>& X, uint64_t n) {
     return total;
 }
 
-// Algorithm 3: toByte
+// Algoritmo 3: toByte
 // Devuelve el residuo (el byte menos significativo) y modifica el vector
-uint8_t divmod256(std::vector<uint8_t>& num) {
+uint8_t divmod256(ByteVector& num) {
     uint16_t carry = 0;
     for (int i = num.size() - 1; i >= 0; --i) {
         uint16_t cur = (carry << 8) | num[i];
@@ -268,9 +308,9 @@ uint8_t divmod256(std::vector<uint8_t>& num) {
     return static_cast<uint8_t>(carry);
 }
 
-std::vector<uint8_t> toByte(const std::vector<uint8_t>& X, uint64_t n) {
-    std::vector<uint8_t> S(n, 0);
-    std::vector<uint8_t> total = X; // copia de X
+ByteVector toByte(const ByteVector& X, uint64_t n) {
+    ByteVector S(n, 0);
+    ByteVector total = X; // copia de X
 
     for (uint64_t i = 0; i < n; ++i) {
         S[n - 1 - i] = divmod256(total);
@@ -278,14 +318,12 @@ std::vector<uint8_t> toByte(const std::vector<uint8_t>& X, uint64_t n) {
     return S;
 }
 
-// Algorithm 4: base_2b
-std::vector<uint32_t> base_2b(const std::vector<uint8_t>& X, int b, int out_len) {
-    // Check for valid input parameters
+// Algoritmo 4: base_2b
+std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len) {
     if (b <= 0 || b > 31) {
         throw std::invalid_argument("b must be between 1 and 31");
     }
 
-    // Calculate required input length and check if X has enough bytes
     int required_bytes = (out_len * b + 7) / 8;
     if (X.size() < required_bytes) {
         throw std::invalid_argument("Input byte array X is too short for requested output length");
@@ -316,6 +354,901 @@ std::vector<uint32_t> base_2b(const std::vector<uint8_t>& X, int b, int out_len)
     return baseb;
 }
 
-/*
- *     WoTS+ algorithms
- */
+// Algoritmo 5: chain(X, i, s, PK.seed, ADRS)
+ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs, size_t n) {
+    // If s is 0, return X
+    if (s == 0) {
+        return X;
+    }
+
+    // temp = X
+    ByteVector temp = X;
+
+    // For j from i to i+s-1
+    for (uint32_t j = i; j < i + s; j++) {
+        // Set hash address
+        adrs.setHashAddress(j);
+
+        // temp = F(PK.seed, ADRS, temp)
+        ByteVector result;
+        if (!F(PKseed, adrs.toVector(), temp, result)) {
+            throw std::runtime_error("Error en F durante chain");
+        }
+        temp = result;
+    }
+
+    return temp;
+}
+// Algoritmo 6: wots_pkGen(SK.seed, PK.seed, ADRS) modificado
+ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs) {
+    // Obtener todos los parámetros necesarios del objeto params global
+    const size_t n = params->n;
+    const uint32_t lg_w = params->lg_w;
+
+    // Calcular len1 y len2 según las ecuaciones (5.2) y (5.3)
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;  // ⌈8n / log2(w)⌉
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;  // Ecuación (5.4)
+
+    // Create a copy of ADRS for key generation
+    ADRS skADRS = adrs;
+
+    // Set type to WOTS_PRF
+    skADRS.setTypeAndClear(WOTS_PRF);
+
+    // Set key pair address
+    skADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // Create temporary storage for public values
+    std::vector<ByteVector> tmp(len);
+
+    // For i from 0 to len-1
+    for (size_t i = 0; i < len; i++) {
+        // Set chain address
+        skADRS.setChainAddress(i);
+
+        // Generate secret value for chain i
+        ByteVector sk;
+        if (!PRF(PKseed, SKseed, skADRS.toVector(), sk)) {
+            throw std::runtime_error("Error en PRF durante wots_pkGen");
+        }
+
+        // Set chain address in ADRS (for chain function)
+        adrs.setChainAddress(i);
+
+        // La w es 2^lg_w como se define en la ecuación (5.1)
+        const uint32_t w = 1 << lg_w;
+        tmp[i] = chain(sk, 0, w - 1, PKseed, adrs, n);
+    }
+
+    // Create WOTS+ public key address
+    ADRS wotsADRS = adrs;
+    wotsADRS.setTypeAndClear(WOTS_PK);
+    wotsADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // El tamaño de la clave pública es n bytes
+    ByteVector pk(n);
+    if (!T_l(PKseed, wotsADRS.toVector(), tmp, pk)) {
+        throw std::runtime_error("Error en T_l durante wots_pkGen");
+    }
+
+    return pk;
+}
+
+// Algoritmo 7: wots_sign(M, SK.seed, PK.seed, ADRS)
+ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs) {
+    // Obtener los parámetros necesarios del esquema configurado
+    const size_t n = params->n;
+    const uint32_t w = 1 << params->lg_w;  // w = 2^lg_w
+    const uint32_t lg_w = params->lg_w;
+
+    // Calcular len1 y len2 según algoritmos 1 y 2
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;  // ⌈8n / log2(w)⌉
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;
+
+    // Inicializar checksum
+    uint32_t csum = 0;
+
+    // Convertir mensaje a base w
+    std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, len1);
+
+    // Calcular checksum
+    for (size_t i = 0; i < len1; i++) {
+        csum += w - 1 - msg_base_w[i];
+    }
+
+    // Ajustar el checksum según el algoritmo (shift left)
+    uint32_t shift_amount = (8 - ((len2 * lg_w) % 8)) % 8;
+    csum = (csum << shift_amount) % (1 << (len2 * lg_w));
+
+    // Convertir checksum a bytes
+    ByteVector csum_bytes;
+    size_t csum_byte_len = (len2 * lg_w + 7) / 8; // ⌈(len2 * lg_w) / 8⌉
+    for (int i = csum_byte_len - 1; i >= 0; i--) {
+        csum_bytes.insert(csum_bytes.begin(), static_cast<uint8_t>(csum & 0xFF));
+        csum >>= 8;
+    }
+
+    // Convertir checksum a base w
+    std::vector<uint32_t> csum_base_w = base_2b(csum_bytes, lg_w, len2);
+
+    // Crear el mensaje completo (msg || csum)
+    std::vector<uint32_t> msg_complete(len);
+    for (size_t i = 0; i < len1; i++) {
+        msg_complete[i] = msg_base_w[i];
+    }
+    for (size_t i = 0; i < len2; i++) {
+        msg_complete[len1 + i] = csum_base_w[i];
+    }
+
+    // Crear una copia de ADRS para la generación de claves
+    ADRS skADRS = adrs;
+
+    // Establecer tipo a WOTS_PRF
+    skADRS.setTypeAndClear(WOTS_PRF);
+
+    // Establecer dirección del par de claves
+    skADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // Inicializar la firma
+    ByteVector sig(len * n);
+
+    // Generar la firma
+    for (size_t i = 0; i < len; i++) {
+        // Establecer chain address
+        skADRS.setChainAddress(i);
+
+        // Calcular el valor secreto para la cadena i
+        ByteVector sk;
+        if (!PRF(PKseed, SKseed, skADRS.toVector(), sk)) {
+            throw std::runtime_error("Error en PRF durante wots_sign");
+        }
+
+        // Establecer chain address en ADRS para la función chain
+        adrs.setChainAddress(i);
+
+        // Calcular el valor de firma para la cadena i usando msg_complete[i]
+        ByteVector sig_part = chain(sk, 0, msg_complete[i], PKseed, adrs, n);
+
+        // Copiar este valor a la posición correspondiente en sig
+        std::copy(sig_part.begin(), sig_part.end(), sig.begin() + i * n);
+    }
+
+    return sig;
+}
+// Algoritmo 8: wots_pkFromSig(sig, M, PK.seed, ADRS)
+ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS adrs) {
+    // Obtener los parámetros necesarios del esquema configurado
+    const size_t n = params->n;
+    const uint32_t w = 1 << params->lg_w;  // w = 2^lg_w
+    const uint32_t lg_w = params->lg_w;
+
+    // Calcular len1 y len2 según algoritmos 1 y 2
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;  // ⌈8n / log2(w)⌉
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;
+
+    // Verificar tamaño de la firma
+    if (sig.size() != len * n) {
+        throw std::invalid_argument("Tamaño de firma incorrecto para wots_pkFromSig");
+    }
+
+    // Inicializar checksum
+    uint32_t csum = 0;
+
+    // Convertir mensaje a base w
+    std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, len1);
+
+    // Calcular checksum
+    for (size_t i = 0; i < len1; i++) {
+        csum += w - 1 - msg_base_w[i];
+    }
+
+    // Ajustar el checksum según el algoritmo (shift left)
+    uint32_t shift_amount = (8 - ((len2 * lg_w) % 8)) % 8;
+    csum = (csum << shift_amount) % (1 << (len2 * lg_w));
+
+    // Convertir checksum a bytes
+    ByteVector csum_bytes;
+    size_t csum_byte_len = (len2 * lg_w + 7) / 8; // ⌈(len2 * lg_w) / 8⌉
+    for (int i = csum_byte_len - 1; i >= 0; i--) {
+        csum_bytes.insert(csum_bytes.begin(), static_cast<uint8_t>(csum & 0xFF));
+        csum >>= 8;
+    }
+
+    // Convertir checksum a base w
+    std::vector<uint32_t> csum_base_w = base_2b(csum_bytes, lg_w, len2);
+
+    // Crear el mensaje completo (msg || csum)
+    std::vector<uint32_t> msg_complete(len);
+    for (size_t i = 0; i < len1; i++) {
+        msg_complete[i] = msg_base_w[i];
+    }
+    for (size_t i = 0; i < len2; i++) {
+        msg_complete[len1 + i] = csum_base_w[i];
+    }
+
+    // Crear una copia de ADRS para la verificación
+    ADRS pkADRS = adrs;
+
+    // Vector temporal para almacenar las partes de la clave pública reconstruida
+    std::vector<ByteVector> tmp(len);
+
+    // Procesar cada parte de la firma
+    for (size_t i = 0; i < len; i++) {
+        // Extraer la parte i-ésima de la firma
+        ByteVector sig_i(sig.begin() + i * n, sig.begin() + (i + 1) * n);
+
+        // Establecer chain address en ADRS
+        pkADRS.setChainAddress(i);
+
+        // Calcular la parte correspondiente de la clave pública
+        // tmp[i] <- chain(sig[i], msg[i], w-1-msg[i], PK.seed, ADRS)
+        tmp[i] = chain(sig_i, msg_complete[i], w - 1 - msg_complete[i], PKseed, pkADRS, n);
+    }
+
+    // Crear dirección para la clave pública WOTS+
+    ADRS wotsADRS = adrs;
+    wotsADRS.setTypeAndClear(WOTS_PK);
+    wotsADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // Comprimir los resultados para obtener la clave pública
+    ByteVector pk(n);
+    if (!T_l(PKseed, wotsADRS.toVector(), tmp, pk)) {
+        throw std::runtime_error("Error en T_l durante wots_pkFromSig");
+    }
+
+    return pk;
+}
+// Algoritmo 9: xmss_node(SK.seed, i, z, PK.seed, ADRS) mejorado
+ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS adrs) {
+    // Inicializar nodo
+    ByteVector node;
+
+    // Si z = 0, calcular la clave pública WOTS+ directamente
+    if (z == 0) {
+        // Establecer dirección del par de claves sin modificar el tipo
+        adrs.setKeyPairAddress(i);
+
+        // Generar la clave pública WOTS+ pasando los parámetros desde la estructura global
+        node = wots_pkGen(SKseed, PKseed, adrs);
+    }
+        // Si z > 0, calcular nodo interno del árbol
+    else {
+        // Calcular nodo izquierdo
+        ByteVector lnode = xmss_node(SKseed, 2*i, z-1, PKseed, adrs);
+
+        // Calcular nodo derecho
+        ByteVector rnode = xmss_node(SKseed, 2*i+1, z-1, PKseed, adrs);
+
+        // Configurar ADRS para nodo interno del árbol
+        adrs.setTypeAndClear(WOTS_TREES);
+
+        // Establecer altura del árbol
+        adrs.setTreeHeight(z);
+
+        // Establecer índice del árbol
+        adrs.setTreeIndex(i);
+
+        // Concatenar correctamente los nodos izquierdo y derecho
+        ByteVector combined;
+        combined.reserve(lnode.size() + rnode.size());
+        combined.insert(combined.end(), lnode.begin(), lnode.end());
+        combined.insert(combined.end(), rnode.begin(), rnode.end());
+
+        // Aplicar la función hash H
+        if (!H(PKseed, adrs.toVector(), combined, node)) {
+            throw std::runtime_error("Error en H durante xmss_node");
+        }
+    }
+
+    return node;
+}
+// Algoritmo 10: xmss_sign(M, SK.seed, idx, PK.seed, ADRS)
+ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx,
+                     const ByteVector& PKseed, ADRS adrs) {
+    // Obtener parámetros del esquema configurado
+    const uint32_t h_prima = params->h_prima; // altura del árbol XMSS
+
+    // Paso 1-4: Construir el camino de autenticación (AUTH)
+    std::vector<ByteVector> AUTH(h_prima);
+    for (uint32_t j = 0; j < h_prima; j++) {
+        // Calcular k según la fórmula: k ← ⌊idx/2^j⌋ ⊕ 1
+        uint32_t k = (idx >> j) ^ 1;
+
+        // Obtener el nodo de autenticación usando xmss_node
+        AUTH[j] = xmss_node(SKseed, k, j, PKseed, adrs);
+    }
+
+    // Paso 5-6: Preparar ADRS para la firma WOTS+
+    adrs.setTypeAndClear(WOTS_HASH);
+    adrs.setKeyPairAddress(idx);
+
+    // Paso 7: Generar la firma WOTS+ del mensaje
+    ByteVector sig = wots_sign(M, SKseed, PKseed, adrs);
+
+    // Paso 8-9: Construir la firma XMSS completa (sig || AUTH)
+    // Calcular el tamaño total de AUTH
+    size_t auth_size = 0;
+    for (const auto& auth_node : AUTH) {
+        auth_size += auth_node.size();
+    }
+
+    // Reservar espacio para la firma completa
+    ByteVector SIG_XMSS;
+    SIG_XMSS.reserve(sig.size() + auth_size);
+
+    // Agregar la firma WOTS+
+    SIG_XMSS.insert(SIG_XMSS.end(), sig.begin(), sig.end());
+
+    // Agregar el camino de autenticación
+    for (const auto& auth_node : AUTH) {
+        SIG_XMSS.insert(SIG_XMSS.end(), auth_node.begin(), auth_node.end());
+    }
+
+    return SIG_XMSS;
+}
+// Algoritmo 11: xmss_pkFromSig(idx, SIG_XMSS, M, PK.seed, ADRS)
+ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
+                          const ByteVector& M, const ByteVector& PKseed, ADRS adrs) {
+    // Obtener parámetros del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t h_prima = params->h_prima; // Altura del árbol XMSS
+
+    // Calcular la longitud de la firma WOTS+
+    const uint32_t lg_w = params->lg_w;
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;  // ⌈8n / log2(w)⌉
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;  // Ecuación (5.4)
+
+    // Calcular tamaño de la firma WOTS+
+    const size_t wots_sig_size = len * n;
+
+    // Paso 1-2: Preparar ADRS para obtener la clave pública WOTS+
+    adrs.setTypeAndClear(WOTS_HASH);
+    adrs.setKeyPairAddress(idx);
+
+    // Paso 3-4: Extraer la firma WOTS+ y el camino de autenticación AUTH de SIG_XMSS
+    // La firma WOTS+ es la primera parte de SIG_XMSS de tamaño len * n
+    ByteVector sig(SIG_XMSS.begin(), SIG_XMSS.begin() + wots_sig_size);
+
+    // El camino de autenticación AUTH está compuesto por h_prima nodos, cada uno de tamaño n
+    std::vector<ByteVector> AUTH(h_prima);
+    for (uint32_t i = 0; i < h_prima; i++) {
+        size_t offset = wots_sig_size + i * n;
+        AUTH[i] = ByteVector(SIG_XMSS.begin() + offset, SIG_XMSS.begin() + offset + n);
+    }
+
+    // Paso 5: Computar la clave pública WOTS+ a partir de la firma
+    std::vector<ByteVector> node(2); // Necesitamos dos nodos para cálculos intermedios
+    node[0] = wots_pkFromSig(sig, M, PKseed, adrs);
+
+    // Paso 6-18: Calcular la raíz desde la clave pública WOTS+ y AUTH
+    adrs.setTypeAndClear(WOTS_TREES);
+    adrs.setTreeIndex(idx);
+
+    for (uint32_t k = 0; k < h_prima; k++) {
+        adrs.setTreeHeight(k + 1);
+
+        if ((idx >> k) % 2 == 0) { // Si idx/2^k es par
+            adrs.setTreeIndex(adrs.getTreeIndex() / 2);
+
+            // Concatenar node[0] || AUTH[k]
+            ByteVector concatenated;
+            concatenated.reserve(node[0].size() + AUTH[k].size());
+            concatenated.insert(concatenated.end(), node[0].begin(), node[0].end());
+            concatenated.insert(concatenated.end(), AUTH[k].begin(), AUTH[k].end());
+
+            // node[1] ← H(PK.seed, ADRS, node[0] || AUTH[k])
+            if (!H(PKseed, adrs.toVector(), concatenated, node[1])) {
+                throw std::runtime_error("Error en H durante xmss_pkFromSig");
+            }
+        } else { // Si idx/2^k es impar
+            adrs.setTreeIndex((adrs.getTreeIndex() - 1) / 2);
+
+            // Concatenar AUTH[k] || node[0]
+            ByteVector concatenated;
+            concatenated.reserve(AUTH[k].size() + node[0].size());
+            concatenated.insert(concatenated.end(), AUTH[k].begin(), AUTH[k].end());
+            concatenated.insert(concatenated.end(), node[0].begin(), node[0].end());
+
+            // node[1] ← H(PK.seed, ADRS, AUTH[k] || node[0])
+            if (!H(PKseed, adrs.toVector(), concatenated, node[1])) {
+                throw std::runtime_error("Error en H durante xmss_pkFromSig");
+            }
+        }
+
+        // node[0] ← node[1]
+        node[0] = node[1];
+    }
+
+    // Paso 19: Devolver el nodo raíz
+    return node[0];
+}
+// Algoritmo 12: ht_sign(M, SK.seed, PK.seed, idx_tree, idx_leaf)
+ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed,
+                   uint32_t idx_tree, uint32_t idx_leaf) {
+    // Obtener parámetros relevantes del esquema configurado
+    const uint32_t d = params->d;           // Número de capas en el árbol híper
+    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS
+
+    // Paso 1: Inicializar ADRS
+    ADRS adrs;  // Por defecto se inicializa con ceros
+
+    // Paso 2: Establecer la dirección del árbol
+    adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+
+    // Paso 3: Generar la firma XMSS para la capa 0
+    ByteVector SIG_tmp = xmss_sign(M, SKseed, idx_leaf, PKseed, adrs);
+
+    // Paso 4: Inicializar la firma HT con la firma XMSS de la capa 0
+    ByteVector SIG_HT = SIG_tmp;
+
+    // Paso 5: Calcular la raíz del árbol XMSS actual
+    ByteVector root = xmss_pkFromSig(idx_leaf, SIG_tmp, M, PKseed, adrs);
+
+    // Pasos 6-16: Procesar cada capa del árbol híper
+    for (uint32_t j = 1; j < d; j++) {
+        // Paso 7: Calcular el índice de hoja para esta capa
+        uint32_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);  // idx_tree mod 2^h'
+
+        // Paso 8: Actualizar el índice del árbol eliminando los bits usados
+        idx_tree = idx_tree >> h_prima;  // Eliminar los h' bits menos significativos
+
+        // Paso 9: Establecer la dirección de capa
+        adrs.setLayerAddress(j);
+
+        // Paso 10: Actualizar la dirección del árbol
+        adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+
+        // Paso 11: Generar la firma XMSS para la capa actual usando la raíz anterior como mensaje
+        SIG_tmp = xmss_sign(root, SKseed, idx_leaf_j, PKseed, adrs);
+
+        // Paso 12: Concatenar la firma XMSS actual a la firma HT
+        SIG_HT.insert(SIG_HT.end(), SIG_tmp.begin(), SIG_tmp.end());
+
+        // Pasos 13-15: Si no es la última capa, calcular la raíz para la siguiente iteración
+        if (j < d - 1) {
+            root = xmss_pkFromSig(idx_leaf_j, SIG_tmp, root, PKseed, adrs);
+        }
+    }
+
+    // Paso 17: Devolver la firma HT completa
+    return SIG_HT;
+}
+
+// Algoritmo 13: ht_verify(M, SIG_HT, PK.seed, idx_tree, idx_leaf, PK.root)
+bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed,
+               uint32_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot) {
+    // Obtener parámetros relevantes del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t d = params->d;       // Número de capas en el árbol híper
+    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS
+
+    // Paso 1: Inicializar ADRS
+    ADRS adrs;  // Por defecto se inicializa con ceros (toByte(0, 32))
+
+    // Paso 2: Establecer la dirección del árbol
+    adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+
+    // Calcular el tamaño de la firma XMSS (para extraerla de SIG_HT)
+    const uint32_t lg_w = params->lg_w;
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;
+    const size_t wots_sig_size = len * n;
+    const size_t xmss_sig_size = wots_sig_size + h_prima * n;  // firma WOTS+ + camino AUTH
+
+    // Paso 3: Extraer la primera firma XMSS (de la capa 0)
+    // SIG_tmp ← SIG_HT.getXMSSSignature(0)  [0 : (h' + len) · n]
+    ByteVector SIG_tmp(SIG_HT.begin(), SIG_HT.begin() + xmss_sig_size);
+
+    // Paso 4: Computar la raíz del árbol XMSS usando la firma y el mensaje
+    ByteVector node = xmss_pkFromSig(idx_leaf, SIG_tmp, M, PKseed, adrs);
+
+    // Pasos 5-12: Recorrer las capas restantes del árbol híper
+    for (uint32_t j = 1; j < d; j++) {
+        // Paso 6: Calcular el índice de hoja para esta capa
+        // idx_leaf ← idx_tree mod 2^h'  [h' least significant bits of idx_tree]
+        uint32_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);
+
+        // Paso 7: Actualizar el índice del árbol eliminando los bits usados
+        // idx_tree ← idx_tree >> h'  [remove least significant h' bits from idx_tree]
+        idx_tree = idx_tree >> h_prima;
+
+        // Paso 8: Establecer la dirección de capa
+        adrs.setLayerAddress(j);
+
+        // Paso 9: Actualizar la dirección del árbol
+        adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+
+        // Paso 10: Extraer la firma XMSS para la capa j
+        // SIG_tmp ← SIG_HT.getXMSSSignature(j)  [SIG_HT[j · (h' + len) · n : (j + 1)(h' + len) · n]]
+        size_t offset = j * xmss_sig_size;
+        SIG_tmp = ByteVector(SIG_HT.begin() + offset,
+                             SIG_HT.begin() + offset + xmss_sig_size);
+
+        // Paso 11: Calcular la raíz usando node (raíz anterior) como mensaje
+        node = xmss_pkFromSig(idx_leaf_j, SIG_tmp, node, PKseed, adrs);
+    }
+
+    // Paso 13-17: Verificar si la raíz calculada coincide con la raíz pública
+    if (node == PKroot) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// Algoritmo 14: fors_skGen(SK.seed, PK.seed, ADRS, idx)
+ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs, uint32_t idx) {
+    // Obtener el tamaño del valor secreto (n bytes) del esquema configurado
+    const size_t n = params->n;
+
+    // Paso 1: Copiar la dirección para crear la dirección de generación de claves
+    ADRS skADRS = adrs;
+
+    // Paso 2: Establecer el tipo FORS_PRF y limpiar los bytes restantes
+    skADRS.setTypeAndClear(FORS_PRF);
+
+    // Paso 3: Establecer la dirección del par de claves
+    skADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // Paso 4: Establecer el índice del árbol
+    skADRS.setTreeIndex(idx);
+
+    // Paso 5: Generar y devolver el valor secreto usando PRF
+    ByteVector sk(n);
+    if (!PRF(PKseed, SKseed, skADRS.toVector(), sk)) {
+        throw std::runtime_error("Error en PRF durante fors_skGen");
+    }
+
+    return sk;
+}
+
+// Algoritmo 15: fors_node(SK.seed, i, z, PK.seed, ADRS)
+ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
+                     const ByteVector& PKseed, ADRS adrs) {
+    // Obtener el tamaño del valor secreto (n bytes) del esquema configurado
+    const size_t n = params->n;
+
+    // Inicializar el nodo a devolver
+    ByteVector node;
+
+    // Paso 1-5: Si estamos en un nodo hoja (z = 0)
+    if (z == 0) {
+        // Paso 2: Generar el valor secreto del FORS
+        ByteVector sk = fors_skGen(SKseed, PKseed, adrs, i);
+
+        // Paso 3: Establecer la altura del árbol en 0
+        adrs.setTreeHeight(0);
+
+        // Paso 4: Establecer el índice del árbol
+        adrs.setTreeIndex(i);
+
+        // Paso 5: Aplicar la función F para obtener el valor público
+        if (!F(PKseed, adrs.toVector(), sk, node)) {
+            throw std::runtime_error("Error en F durante fors_node");
+        }
+    }
+        // Paso 6-11: Si estamos en un nodo interno (z > 0)
+    else {
+        // Paso 7: Calcular el nodo izquierdo de manera recursiva
+        ByteVector lnode = fors_node(SKseed, 2*i, z-1, PKseed, adrs);
+
+        // Paso 8: Calcular el nodo derecho de manera recursiva
+        ByteVector rnode = fors_node(SKseed, 2*i+1, z-1, PKseed, adrs);
+
+        // Paso 9: Establecer la altura del árbol
+        adrs.setTreeHeight(z);
+
+        // Paso 10: Establecer el índice del árbol
+        adrs.setTreeIndex(i);
+
+        // Paso 11: Concatenar los nodos izquierdo y derecho, y aplicar la función H
+        ByteVector concatenated;
+        concatenated.reserve(lnode.size() + rnode.size());
+        concatenated.insert(concatenated.end(), lnode.begin(), lnode.end());
+        concatenated.insert(concatenated.end(), rnode.begin(), rnode.end());
+
+        if (!H(PKseed, adrs.toVector(), concatenated, node)) {
+            throw std::runtime_error("Error en H durante fors_node");
+        }
+    }
+
+    // Paso 13: Devolver el nodo calculado
+    return node;
+}
+// Algoritmo 16: fors_sign(md, SK.seed, PK.seed, ADRS)
+ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
+                     const ByteVector& PKseed, ADRS adrs) {
+    // Obtener parámetros relevantes del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t k = params->k;       // Número de árboles en el bosque FORS
+    const uint32_t a = params->a;       // Altura de cada árbol FORS (log2 de t)
+    const uint32_t t = 1 << a;          // Número de hojas en cada árbol FORS (t = 2^a)
+
+    // Paso 1: Inicializar SIG_FORS como una cadena de bytes vacía
+    ByteVector SIG_FORS;
+
+    // Paso 2: Obtener los índices a partir del resumen del mensaje
+    // indices ← base_2^b(md, a, k)
+    std::vector<uint32_t> indices = base_2b(md, a, k);
+
+    // Preparar estructura para almacenar el camino de autenticación completo
+    std::vector<ByteVector> AUTH;
+
+    // Paso 3-10: Calcular los elementos de la firma para cada uno de los k árboles
+    for (uint32_t i = 0; i < k; i++) {
+        // Paso 4: Obtener el valor secreto correspondiente a este índice
+        // SIG_FORS ← SIG_FORS || fors_skGen(SK.seed, PK.seed, ADRS, i·2^a + indices[i])
+        uint32_t leaf_index = i * t + indices[i];
+        ByteVector sk = fors_skGen(SKseed, PKseed, adrs, leaf_index);
+
+        // Añadir el valor secreto a la firma
+        SIG_FORS.insert(SIG_FORS.end(), sk.begin(), sk.end());
+
+        // Pasos 5-8: Calcular el camino de autenticación para este valor secreto
+        for (uint32_t j = 0; j < a; j++) {
+            // Paso 6: Calcular s, el índice del nodo hermano en este nivel
+            // s ← ⌊indices[i]/2^j⌋ ⊕ 1
+            uint32_t s = (indices[i] >> j) ^ 1;
+
+            // Paso 7: Calcular el nodo de autenticación
+            // AUTH[j] ← fors_node(SK.seed, i·2^(a-j) + s, j, PK.seed, ADRS)
+            uint32_t node_index = i * (t >> j) + s;
+            ByteVector auth_node = fors_node(SKseed, node_index, j, PKseed, adrs);
+
+            // Añadir el nodo de autenticación al vector AUTH temporal
+            AUTH.push_back(auth_node);
+        }
+    }
+
+    // Paso 9: Añadir todos los nodos de autenticación a la firma
+    for (const auto& auth_node : AUTH) {
+        SIG_FORS.insert(SIG_FORS.end(), auth_node.begin(), auth_node.end());
+    }
+
+    // Paso 11: Devolver la firma FORS completa
+    return SIG_FORS;
+}
+
+// Algoritmo 17: fors_pkFromSig(SIG_FORS, md, PK.seed, ADRS)
+ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
+                          const ByteVector& PKseed, ADRS adrs) {
+    // Obtener parámetros relevantes del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t k = params->k;       // Número de árboles en el bosque FORS
+    const uint32_t a = params->a;       // Altura de cada árbol FORS (log2 de t)
+    const uint32_t t = 1 << a;          // Número de hojas en cada árbol FORS (t = 2^a)
+
+    // Paso 1: Obtener los índices a partir del resumen del mensaje
+    // indices ← base_2^b(md, a, k)
+    std::vector<uint32_t> indices = base_2b(md, a, k);
+
+    // Vector para almacenar las raíces de los k árboles
+    std::vector<ByteVector> roots(k);
+
+    // Calcular el tamaño de cada componente de la firma
+    size_t sk_size = n;                // Tamaño del valor secreto
+    size_t auth_size = a * n;          // Tamaño del camino de autenticación por árbol
+    size_t tree_sig_size = sk_size + auth_size; // Tamaño total de la firma por árbol
+
+    // Paso 2-20: Procesar cada uno de los k árboles
+    for (uint32_t i = 0; i < k; i++) {
+        // Paso 3: Extraer el valor secreto de la firma
+        // sk ← SIG_FORS.getSK(i)  [SIG_FORS[i · (a + 1) · n : (i · (a + 1) + 1) · n]]
+        size_t sk_offset = i * tree_sig_size;
+        ByteVector sk(SIG_FORS.begin() + sk_offset, SIG_FORS.begin() + sk_offset + n);
+
+        // Paso 4-5: Configurar ADRS para calcular el nodo hoja
+        adrs.setTreeHeight(0);
+        adrs.setTreeIndex(i * t + indices[i]);
+
+        // Paso 6: Calcular el nodo hoja aplicando F al valor secreto
+        std::vector<ByteVector> node(2); // Para almacenar nodos intermedios (índices 0 y 1)
+        if (!F(PKseed, adrs.toVector(), sk, node[0])) {
+            throw std::runtime_error("Error en F durante fors_pkFromSig");
+        }
+
+        // Paso 7: Extraer el camino de autenticación de la firma
+        // auth ← SIG_FORS.getAUTH(i)  [SIG_FORS[(i · (a + 1) + 1) · n : (i + 1) · (a + 1) · n]]
+        std::vector<ByteVector> auth(a);
+        for (uint32_t j = 0; j < a; j++) {
+            size_t auth_offset = sk_offset + n + j * n;
+            auth[j] = ByteVector(SIG_FORS.begin() + auth_offset,
+                                 SIG_FORS.begin() + auth_offset + n);
+        }
+
+        // Pasos 8-18: Reconstruir la raíz a partir del nodo hoja y el camino de autenticación
+        for (uint32_t j = 0; j < a; j++) {
+            // Paso 9: Establecer la altura del árbol
+            adrs.setTreeHeight(j + 1);
+
+            // Pasos 10-16: Calcular el nodo padre según la paridad del índice
+            if ((indices[i] >> j) % 2 == 0) { // Si el índice es par
+                // Pasos 11-12: El nodo actual está a la izquierda
+                adrs.setTreeIndex(adrs.getTreeIndex() / 2);
+
+                // Concatenar node[0] || auth[j]
+                ByteVector concatenated;
+                concatenated.reserve(node[0].size() + auth[j].size());
+                concatenated.insert(concatenated.end(), node[0].begin(), node[0].end());
+                concatenated.insert(concatenated.end(), auth[j].begin(), auth[j].end());
+
+                if (!H(PKseed, adrs.toVector(), concatenated, node[1])) {
+                    throw std::runtime_error("Error en H durante fors_pkFromSig");
+                }
+            } else { // Si el índice es impar
+                // Pasos 14-15: El nodo actual está a la derecha
+                adrs.setTreeIndex((adrs.getTreeIndex() - 1) / 2);
+
+                // Concatenar auth[j] || node[0]
+                ByteVector concatenated;
+                concatenated.reserve(auth[j].size() + node[0].size());
+                concatenated.insert(concatenated.end(), auth[j].begin(), auth[j].end());
+                concatenated.insert(concatenated.end(), node[0].begin(), node[0].end());
+
+                if (!H(PKseed, adrs.toVector(), concatenated, node[1])) {
+                    throw std::runtime_error("Error en H durante fors_pkFromSig");
+                }
+            }
+
+            // Paso 17: Actualizar node[0] para la siguiente iteración
+            node[0] = node[1];
+        }
+
+        // Paso 19: Guardar la raíz calculada
+        roots[i] = node[0];
+    }
+
+    // Pasos 21-23: Preparar ADRS para calcular la clave pública FORS
+    ADRS forspkADRS = adrs;
+    forspkADRS.setTypeAndClear(FORS_ROOTS);
+    forspkADRS.setKeyPairAddress(adrs.getKeyPairAddress());
+
+    // Paso 24: Calcular la clave pública FORS usando T_l (función de compresión de árboles)
+    ByteVector pk;
+    if (!T_l(PKseed, forspkADRS.toVector(), roots, pk)) {
+        throw std::runtime_error("Error en T_l durante fors_pkFromSig");
+    }
+
+    // Paso 25: Devolver la clave pública
+    return pk;
+}
+// Algoritmo 18: slh_keygen_internal(SK.seed, SK.prf, PK.seed)
+std::pair<ByteVector, ByteVector> slh_keygen_internal(const ByteVector& SKseed,
+                                                      const ByteVector& SKprf,
+                                                      const ByteVector& PKseed) {
+    // Obtener parámetros relevantes del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t d = params->d;       // Número de capas en el árbol híper
+    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS
+
+    // Paso 1: Inicializar ADRS como un vector de 32 bytes con valor 0
+    ADRS adrs;  // Por defecto se inicializa con ceros (toByte(0, 32))
+
+    // Paso 2: Establecer la dirección de capa al nivel más alto (d-1)
+    adrs.setLayerAddress(d - 1);
+
+    // Paso 3: Generar la raíz de la clave pública para el árbol XMSS de nivel superior
+    ByteVector PKroot = xmss_node(SKseed, 0, h_prima, PKseed, adrs);
+
+    // Paso 4: Construir y devolver el par de claves
+    // Formato de clave privada: (SK.seed || SK.prf || PK.seed || PK.root)
+    ByteVector sk;
+    sk.reserve(n + n + n + n); // Reservar espacio para todos los componentes (asumiendo que todos tienen tamaño n)
+
+    // Agregar SK.seed a la clave privada
+    sk.insert(sk.end(), SKseed.begin(), SKseed.end());
+
+    // Agregar SK.prf a la clave privada
+    sk.insert(sk.end(), SKprf.begin(), SKprf.end());
+
+    // Agregar PK.seed a la clave privada
+    sk.insert(sk.end(), PKseed.begin(), PKseed.end());
+
+    // Agregar PK.root a la clave privada
+    sk.insert(sk.end(), PKroot.begin(), PKroot.end());
+
+    // Formato de clave pública: (PK.seed || PK.root)
+    ByteVector pk;
+    pk.reserve(n + n); // Reservar espacio para ambos componentes
+
+    // Agregar PK.seed a la clave pública
+    pk.insert(pk.end(), PKseed.begin(), PKseed.end());
+
+    // Agregar PK.root a la clave pública
+    pk.insert(pk.end(), PKroot.begin(), PKroot.end());
+
+    return std::make_pair(sk, pk);
+}
+// Algoritmo 19: slh_sign_internal(M, SK, addrnd)
+ByteVector slh_sign_internal(const ByteVector& M, const ByteVector& SK, const ByteVector& addrnd) {
+    // Obtener parámetros relevantes del esquema configurado
+    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
+    const uint32_t k = params->k;       // Número de árboles en el bosque FORS
+    const uint32_t a = params->a;       // Altura de cada árbol FORS
+    const uint32_t h = params->h;       // Altura total del árbol híbrido
+    const uint32_t d = params->d;       // Número de capas en el árbol híbrido
+    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS (h / d)
+
+    // Extraer componentes de la clave privada
+    ByteVector SKseed, SKprf, PKseed, PKroot;
+    extract_secret_key_components(SK, SKseed, SKprf, PKseed, PKroot);
+
+    // Paso 1: Inicializar ADRS como un vector de 32 bytes con valor 0
+    ADRS adrs;  // Por defecto se inicializa con ceros (toByte(0, 32))
+
+    // Paso 2: Determinar el valor de opt_rand (aleatorio adicional)
+    // Para la variante determinista, opt_rand = PK.seed
+    ByteVector opt_rand;
+    if (addrnd.empty()) {
+        opt_rand = PKseed;
+    } else {
+        opt_rand = addrnd;
+    }
+
+    // Paso 3-4: Generar el aleatorizador R y comenzar la firma con él
+    ByteVector R;
+    if (!PRF_msg(SKprf, opt_rand, M, R)) {
+        throw std::runtime_error("Error en PRF_msg durante slh_sign_internal");
+    }
+
+    // Inicializar la firma con R
+    ByteVector SIG = R;
+
+    // Paso 5: Calcular el digest del mensaje
+    ByteVector digest;
+    if (!H_msg(R, PKseed, PKroot, M, digest)) {
+        throw std::runtime_error("Error en H_msg durante slh_sign_internal");
+    }
+
+    // Paso 6: Extraer los primeros k*a bits del digest para md
+    const size_t md_bits = k * a;
+    const size_t md_bytes = (md_bits + 7) / 8;  // Redondear hacia arriba
+    ByteVector md(digest.begin(), digest.begin() + md_bytes);
+
+    // Pasos 7-8: Calcular tmp_idx_tree y tmp_idx_leaf
+    // tmp_idx_tree ← digest[⌈k·a/8⌉ : ⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉]
+    const size_t tree_idx_start = md_bytes;
+    const size_t tree_idx_bits = h - h_prima / d;
+    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;  // Redondear hacia arriba
+    ByteVector tmp_idx_tree(digest.begin() + tree_idx_start,
+                            digest.begin() + tree_idx_start + tree_idx_bytes);
+
+    // tmp_idx_leaf ← digest[⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉ : ⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉ + ⌈h′/8d⌉]
+    const size_t leaf_idx_start = tree_idx_start + tree_idx_bytes;
+    const size_t leaf_idx_bits = h_prima / d;
+    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;  // Redondear hacia arriba
+    ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
+                            digest.begin() + leaf_idx_start + leaf_idx_bytes);
+
+    // Paso 9-10: Convertir a enteros
+    // idx_tree ← toInt(tmp_idx_tree, ⌈(h-h′/d)/8⌉) mod 2^(h-h′/d)
+    uint64_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+
+    // idx_leaf ← toInt(tmp_idx_leaf, ⌈h′/8d⌉) mod 2^(h′/d)
+    uint64_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+
+    // Pasos 11-14: Preparar ADRS para la firma FORS y generar la firma FORS
+    adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+    adrs.setTypeAndClear(FORS_TREE);
+    adrs.setKeyPairAddress(idx_leaf);
+
+    ByteVector SIG_FORS = fors_sign(md, SKseed, PKseed, adrs);
+
+    // Paso 15: Añadir la firma FORS a la firma SLH-DSA
+    SIG.insert(SIG.end(), SIG_FORS.begin(), SIG_FORS.end());
+
+    // Paso 16: Calcular la clave pública FORS
+    ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, PKseed, adrs);
+
+    // Paso 17-18: Generar la firma HT con la clave pública FORS como mensaje y añadirla a SIG
+    ByteVector SIG_HT = ht_sign(PK_FORS, SKseed, PKseed, idx_tree, idx_leaf);
+    SIG.insert(SIG.end(), SIG_HT.begin(), SIG_HT.end());
+
+    // Paso 19: Devolver la firma completa
+    return SIG;
+}

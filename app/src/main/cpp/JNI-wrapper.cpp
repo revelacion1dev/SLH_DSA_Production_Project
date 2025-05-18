@@ -15,6 +15,32 @@ void throwJavaException(JNIEnv* env, const char* exceptionClass, const char* mes
     }
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_computeHash(JNIEnv *env,
+                                                          jobject /*thisObj*/,
+                                                          jbyteArray input,
+                                                          jint outputLen) {
+    // Obtener la longitud del array de entrada
+    jsize inputLen = env->GetArrayLength(input);
+
+    // Copiar los datos del jbyteArray a un ByteVector
+    ByteVector inputVec(inputLen);
+    env->GetByteArrayRegion(input, 0, inputLen, reinterpret_cast<jbyte*>(inputVec.data()));
+
+    // Prepara el vector de vectores para concatenateAndHash (en este caso, solo uno)
+    std::vector<ByteVector> inputs = {inputVec};
+
+    // Vector de salida
+    ByteVector output;
+    bool ok = concatenateAndHash(inputs, output, static_cast<size_t>(outputLen));
+
+    if (!ok) return nullptr;
+
+    // Convertir el resultado a jbyteArray para devolverlo a Java/Kotlin
+    jbyteArray result = env->NewByteArray(output.size());
+    env->SetByteArrayRegion(result, 0, output.size(), reinterpret_cast<const jbyte*>(output.data()));
+    return result;
+}
 /*
  * Class:     com_revelacion1_tfg_parte1_FunctionLink
  * Method:    genLen2
@@ -354,5 +380,168 @@ JNIEXPORT jlong JNICALL
     return 0;
     }
 }
+
+/*
+ *      Link WOTS+ class
+ */
+// Funciones para algoritmos WOTS+
+/*
+ * Class:     com_revelacion1_tfg_parte1_FunctionLink
+ * Method:    chain
+ * Signature: ([BII[BJI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_chain(
+        JNIEnv *env, jobject /* this */, jbyteArray X, jint i, jint s,
+        jbyteArray PKseed, jlong adrsPtr, jint n) {
+    try {
+        // Convertir jbyteArray a ByteVector
+        jsize x_len = env->GetArrayLength(X);
+        ByteVector x_vec(x_len);
+        env->GetByteArrayRegion(X, 0, x_len, reinterpret_cast<jbyte*>(x_vec.data()));
+
+        // Convertir PKseed a ByteVector
+        jsize pkseed_len = env->GetArrayLength(PKseed);
+        ByteVector pkseed_vec(pkseed_len);
+        env->GetByteArrayRegion(PKseed, 0, pkseed_len, reinterpret_cast<jbyte*>(pkseed_vec.data()));
+
+        // Obtener referencia a ADRS
+        ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+
+        // Llamar a la función chain
+        ByteVector result = chain(x_vec, static_cast<uint32_t>(i), static_cast<uint32_t>(s),
+                                  pkseed_vec, *adrs, static_cast<size_t>(n));
+
+        // Convertir resultado a jbyteArray
+        jbyteArray resultArray = env->NewByteArray(result.size());
+        env->SetByteArrayRegion(resultArray, 0, result.size(), reinterpret_cast<jbyte*>(result.data()));
+        return resultArray;
+    } catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+        return nullptr;
+    }
+}
+
+/*
+ * Class:     com_revelacion1_tfg_parte1_FunctionLink
+ * Method:    wotsPkGen
+ * Signature: ([B[BJI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsPkGen(
+        JNIEnv *env, jobject /* this */, jbyteArray SKseed, jbyteArray PKseed,
+        jlong adrsPtr, jint n, jint wots_len) {
+    try {
+        // Convertir SKseed a ByteVector
+        jsize skseed_len = env->GetArrayLength(SKseed);
+        ByteVector skseed_vec(skseed_len);
+        env->GetByteArrayRegion(SKseed, 0, skseed_len, reinterpret_cast<jbyte*>(skseed_vec.data()));
+
+        // Convertir PKseed a ByteVector
+        jsize pkseed_len = env->GetArrayLength(PKseed);
+        ByteVector pkseed_vec(pkseed_len);
+        env->GetByteArrayRegion(PKseed, 0, pkseed_len, reinterpret_cast<jbyte*>(pkseed_vec.data()));
+
+        // Obtener referencia a ADRS
+        ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+
+        // Llamar a la función wots_pkGen
+        ByteVector result = wots_pkGen(skseed_vec, pkseed_vec, *adrs,
+                                       static_cast<size_t>(n), static_cast<size_t>(wots_len));
+
+        // Convertir resultado a jbyteArray
+        jbyteArray resultArray = env->NewByteArray(result.size());
+        env->SetByteArrayRegion(resultArray, 0, result.size(), reinterpret_cast<jbyte*>(result.data()));
+        return resultArray;
+    } catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+        return nullptr;
+    }
+}
+
+/*
+ * Class:     com_revelacion1_tfg_parte1_FunctionLink
+ * Method:    wotsSign
+ * Signature: ([B[B[BJI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsSign(
+        JNIEnv *env, jobject /* this */, jbyteArray M, jbyteArray SKseed,
+        jbyteArray PKseed, jlong adrsPtr, jint n, jint wots_len) {
+    try {
+        // Convertir M a ByteVector
+        jsize m_len = env->GetArrayLength(M);
+        ByteVector m_vec(m_len);
+        env->GetByteArrayRegion(M, 0, m_len, reinterpret_cast<jbyte*>(m_vec.data()));
+
+        // Convertir SKseed a ByteVector
+        jsize skseed_len = env->GetArrayLength(SKseed);
+        ByteVector skseed_vec(skseed_len);
+        env->GetByteArrayRegion(SKseed, 0, skseed_len, reinterpret_cast<jbyte*>(skseed_vec.data()));
+
+        // Convertir PKseed a ByteVector
+        jsize pkseed_len = env->GetArrayLength(PKseed);
+        ByteVector pkseed_vec(pkseed_len);
+        env->GetByteArrayRegion(PKseed, 0, pkseed_len, reinterpret_cast<jbyte*>(pkseed_vec.data()));
+
+        // Obtener referencia a ADRS
+        ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+
+        // Llamar a la función wots_sign
+        ByteVector result = wots_sign(m_vec, skseed_vec, pkseed_vec, *adrs,
+                                      static_cast<size_t>(n), static_cast<size_t>(wots_len));
+
+        // Convertir resultado a jbyteArray
+        jbyteArray resultArray = env->NewByteArray(result.size());
+        env->SetByteArrayRegion(resultArray, 0, result.size(), reinterpret_cast<jbyte*>(result.data()));
+        return resultArray;
+    } catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+        return nullptr;
+    }
+}
+
+/*
+ * Class:     com_revelacion1_tfg_parte1_FunctionLink
+ * Method:    wotsPkFromSig
+ * Signature: ([B[B[BJI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsPkFromSig(
+        JNIEnv *env, jobject /* this */, jbyteArray sig, jbyteArray M,
+        jbyteArray PKseed, jlong adrsPtr, jint n, jint wots_len) {
+    try {
+        // Convertir sig a ByteVector
+        jsize sig_len = env->GetArrayLength(sig);
+        ByteVector sig_vec(sig_len);
+        env->GetByteArrayRegion(sig, 0, sig_len, reinterpret_cast<jbyte*>(sig_vec.data()));
+
+        // Convertir M a ByteVector
+        jsize m_len = env->GetArrayLength(M);
+        ByteVector m_vec(m_len);
+        env->GetByteArrayRegion(M, 0, m_len, reinterpret_cast<jbyte*>(m_vec.data()));
+
+        // Convertir PKseed a ByteVector
+        jsize pkseed_len = env->GetArrayLength(PKseed);
+        ByteVector pkseed_vec(pkseed_len);
+        env->GetByteArrayRegion(PKseed, 0, pkseed_len, reinterpret_cast<jbyte*>(pkseed_vec.data()));
+
+        // Obtener referencia a ADRS
+        ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
+
+        // Llamar a la función wots_pkFromSig
+        ByteVector result = wots_pkFromSig(sig_vec, m_vec, pkseed_vec, *adrs,
+                                           static_cast<size_t>(n), static_cast<size_t>(wots_len));
+
+        // Convertir resultado a jbyteArray
+        jbyteArray resultArray = env->NewByteArray(result.size());
+        env->SetByteArrayRegion(resultArray, 0, result.size(), reinterpret_cast<jbyte*>(result.data()));
+        return resultArray;
+    } catch (const std::exception& e) {
+        throwJavaException(env, "java/lang/RuntimeException", e.what());
+        return nullptr;
+    }
+}
+
 
 } // extern "C"
