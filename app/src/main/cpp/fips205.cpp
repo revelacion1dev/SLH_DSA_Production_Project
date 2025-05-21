@@ -1,46 +1,11 @@
 // fips205.cpp
 #include "fips205.h"
-#include <openssl/evp.h>
-#include <openssl/err.h>
+#include <openssl/evp.h>  // SHAKE256
+#include <openssl/err.h>  // Error handling
+#include <openssl/rand.h> // Random number generation
+#include <stdexcept>
 
-// Definición de tipos en uint32_t debido a que el tipo ocupa 4 bytes
-constexpr uint32_t WOTS_HASH = 0x00;
-constexpr uint32_t WOTS_PK = 0x01;
-constexpr uint32_t WOTS_TREES = 0x02;
-constexpr uint32_t FORS_TREE = 0x03;
-constexpr uint32_t FORS_ROOTS = 0x04;
-constexpr uint32_t WOTS_PRF = 0x05;
-constexpr uint32_t FORS_PRF = 0x06;
 
-// Enumeración para los parámetros de SLH-DSA
-enum class SLH_DSA_ParamSet {
-    SHA2_128S,
-    SHAKE_128S,
-    SHA2_128F,
-    SHAKE_128F,
-    SHA2_192S,
-    SHAKE_192S,
-    SHA2_192F,
-    SHAKE_192F,
-    SHA2_256S,
-    SHAKE_256S,
-    SHA2_256F,
-    SHAKE_256F,
-    PARAM_COUNT
-};
-
-// Configuración por defecto del esquema
-struct SLH_DSA_Config {
-    static constexpr SLH_DSA_ParamSet SCHEMA = SLH_DSA_ParamSet::SHAKE_256S;
-};
-
-// Estructura de parámetros para cada esquema
-struct SLH_DSA_Params {
-    const char* name;
-    uint32_t n, h, d, h_prima, a, k, lg_w, m, security_category;
-    uint32_t pk_bytes, sig_bytes;
-    bool is_shake;
-};
 
 // Tabla de parámetros para cada variante de SLH-DSA
 constexpr SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] = {
@@ -60,18 +25,25 @@ constexpr SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUN
 
 // Función para obtener los parámetros de un esquema dado
 inline const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set) {
-    size_t index = static_cast<size_t>(set);
+    auto index = static_cast<size_t>(set);
     if (index >= static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT))
         return nullptr;
     return &PARAMS[index];
 }
 
+// Get the parameters based on the schema
+const SLH_DSA_Params* params = get_params(SLH_DSA_Config::SCHEMA);
+
+
+// Definimos un tipo para la firma
+
+
 
 //
-// Función SHAKE256
+// Función SHAKE256 para calcular el hash segun 11.1
 bool computeShake256(const ByteVector& input, ByteVector& output, size_t outputLen) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
@@ -80,7 +52,7 @@ bool computeShake256(const ByteVector& input, ByteVector& output, size_t outputL
 
     // Inicializar con SHAKE256 (El engine se define como nulo, seria interesante aplicar alguno de cara a optimizar la
     // implementación por hardware)
-    if (!EVP_DigestInit_ex(ctx, EVP_shake256(), NULL)) {
+    if (!EVP_DigestInit_ex(ctx, EVP_shake256(), nullptr)) {
         EVP_MD_CTX_free(ctx);
         return false;
     }
@@ -121,8 +93,7 @@ bool concatenateAndHash(const std::vector<ByteVector>& inputs, ByteVector& outpu
     // Calcular hash
     return computeShake256(concatenated, output, outputLen);
 }
-// Get the parameters based on the schema
-const SLH_DSA_Params* params = get_params(SLH_DSA_Config::SCHEMA);
+
 
 // Implementations of hash functions for SLH-DSA with proper parameters
 
@@ -163,6 +134,8 @@ bool H(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M2,
 
 bool T_l(const ByteVector& PKseed, const ByteVector& ADRS, std::vector<ByteVector> Ml,
          ByteVector& output) {
+    // Comprobamos que Ml no esta vacio / es nulo
+    if (Ml.empty()) return false ;
 
     // Primero concatenamos todos los ByteVector en Ml
     ByteVector concatenated_Ml;
@@ -199,7 +172,7 @@ uint32_t bytesToUint32(const ByteVector& bytes, size_t offset) {
 
 // Implementación de ADRS
 
-ADRS::ADRS() {
+ADRS::ADRS() : addr() {
     addr.fill(0);
 }
 
@@ -216,7 +189,7 @@ const uint8_t* ADRS::data() const {
 }
 
 ByteVector ADRS::toVector() const {
-    return ByteVector(addr.begin(), addr.end());
+    return {addr.begin(), addr.end()};
 }
 
 void ADRS::setLayerAddress(uint32_t layer) {
@@ -300,9 +273,9 @@ uint32_t toInt(const ByteVector& X, uint64_t n) {
 // Devuelve el residuo (el byte menos significativo) y modifica el vector
 uint8_t divmod256(ByteVector& num) {
     uint16_t carry = 0;
-    for (int i = num.size() - 1; i >= 0; --i) {
+    for (size_t i = num.size(); i-- > 0;){
         uint16_t cur = (carry << 8) | num[i];
-        num[i] = cur / 256;
+        num[i] = static_cast<uint8_t>(cur / 256);
         carry = cur % 256;
     }
     return static_cast<uint8_t>(carry);
@@ -451,7 +424,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
     uint32_t csum = 0;
 
     // Convertir mensaje a base w
-    std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, len1);
+    std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, static_cast<int>(len1));
 
     // Calcular checksum
     for (size_t i = 0; i < len1; i++) {
@@ -465,7 +438,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
     // Convertir checksum a bytes
     ByteVector csum_bytes;
     size_t csum_byte_len = (len2 * lg_w + 7) / 8; // ⌈(len2 * lg_w) / 8⌉
-    for (int i = csum_byte_len - 1; i >= 0; i--) {
+    for (size_t i = csum_byte_len - 1; i >= 0; i--) {
         csum_bytes.insert(csum_bytes.begin(), static_cast<uint8_t>(csum & 0xFF));
         csum >>= 8;
     }
@@ -1117,138 +1090,270 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
     // Paso 25: Devolver la clave pública
     return pk;
 }
-// Algoritmo 18: slh_keygen_internal(SK.seed, SK.prf, PK.seed)
-std::pair<ByteVector, ByteVector> slh_keygen_internal(const ByteVector& SKseed,
-                                                      const ByteVector& SKprf,
-                                                      const ByteVector& PKseed) {
+// Algoritmo 18: slh_keygen_internal con separación de claves
+std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
+        const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed) {
+
     // Obtener parámetros relevantes del esquema configurado
-    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
-    const uint32_t d = params->d;       // Número de capas en el árbol híper
-    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS
+    const uint32_t d = params->d;
+    const uint32_t h_prima = params->h_prima;
 
-    // Paso 1: Inicializar ADRS como un vector de 32 bytes con valor 0
-    ADRS adrs;  // Por defecto se inicializa con ceros (toByte(0, 32))
-
-    // Paso 2: Establecer la dirección de capa al nivel más alto (d-1)
+    // Inicializar ADRS
+    ADRS adrs;
     adrs.setLayerAddress(d - 1);
 
-    // Paso 3: Generar la raíz de la clave pública para el árbol XMSS de nivel superior
+    // Generar la raíz de la clave pública para el árbol XMSS de nivel superior
     ByteVector PKroot = xmss_node(SKseed, 0, h_prima, PKseed, adrs);
 
-    // Paso 4: Construir y devolver el par de claves
-    // Formato de clave privada: (SK.seed || SK.prf || PK.seed || PK.root)
-    ByteVector sk;
-    sk.reserve(n + n + n + n); // Reservar espacio para todos los componentes (asumiendo que todos tienen tamaño n)
+    // Crear claves privada y pública por separado
+    SLH_DSA_PrivateKey privateKey;
+    privateKey.seed = SKseed;
+    privateKey.prf = SKprf;
+    privateKey.pkSeed = PKseed;
+    privateKey.pkRoot = PKroot;
 
-    // Agregar SK.seed a la clave privada
-    sk.insert(sk.end(), SKseed.begin(), SKseed.end());
+    SLH_DSA_PublicKey publicKey;
+    publicKey.seed = PKseed;
+    publicKey.root = PKroot;
 
-    // Agregar SK.prf a la clave privada
-    sk.insert(sk.end(), SKprf.begin(), SKprf.end());
-
-    // Agregar PK.seed a la clave privada
-    sk.insert(sk.end(), PKseed.begin(), PKseed.end());
-
-    // Agregar PK.root a la clave privada
-    sk.insert(sk.end(), PKroot.begin(), PKroot.end());
-
-    // Formato de clave pública: (PK.seed || PK.root)
-    ByteVector pk;
-    pk.reserve(n + n); // Reservar espacio para ambos componentes
-
-    // Agregar PK.seed a la clave pública
-    pk.insert(pk.end(), PKseed.begin(), PKseed.end());
-
-    // Agregar PK.root a la clave pública
-    pk.insert(pk.end(), PKroot.begin(), PKroot.end());
-
-    return std::make_pair(sk, pk);
+    return std::make_pair(privateKey, publicKey);
 }
-// Algoritmo 19: slh_sign_internal(M, SK, addrnd)
-ByteVector slh_sign_internal(const ByteVector& M, const ByteVector& SK, const ByteVector& addrnd) {
-    // Obtener parámetros relevantes del esquema configurado
-    const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
-    const uint32_t k = params->k;       // Número de árboles en el bosque FORS
-    const uint32_t a = params->a;       // Altura de cada árbol FORS
-    const uint32_t h = params->h;       // Altura total del árbol híbrido
-    const uint32_t d = params->d;       // Número de capas en el árbol híbrido
-    const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS (h / d)
 
-    // Extraer componentes de la clave privada
-    ByteVector SKseed, SKprf, PKseed, PKroot;
-    extract_secret_key_components(SK, SKseed, SKprf, PKseed, PKroot);
+// Algoritmo 19: slh_sign_internal con la estructura de clave privada separada
+SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
+                                    const SLH_DSA_PrivateKey& privateKey,
+                                    const ByteVector& addrnd) {
+    // Obtener parámetros relevantes
+    const size_t n = params->n;
+    const uint32_t k = params->k;
+    const uint32_t a = params->a;
+    const uint32_t h = params->h;
+    const uint32_t d = params->d;
+    const uint32_t h_prima = params->h_prima;
 
-    // Paso 1: Inicializar ADRS como un vector de 32 bytes con valor 0
-    ADRS adrs;  // Por defecto se inicializa con ceros (toByte(0, 32))
+    // Paso 1: Inicializar ADRS
+    ADRS adrs;
 
-    // Paso 2: Determinar el valor de opt_rand (aleatorio adicional)
-    // Para la variante determinista, opt_rand = PK.seed
-    ByteVector opt_rand;
-    if (addrnd.empty()) {
-        opt_rand = PKseed;
-    } else {
-        opt_rand = addrnd;
-    }
+    // Paso 2: Determinar el valor de opt_rand
+    ByteVector opt_rand = addrnd.empty() ? privateKey.pkSeed : addrnd;
 
-    // Paso 3-4: Generar el aleatorizador R y comenzar la firma con él
+    // Paso 3-4: Generar el aleatorizador R
     ByteVector R;
-    if (!PRF_msg(SKprf, opt_rand, M, R)) {
-        throw std::runtime_error("Error en PRF_msg durante slh_sign_internal");
+    if (!PRF_msg(privateKey.prf, opt_rand, M, R)) {
+        throw std::runtime_error("Error en PRF_msg");
     }
-
-    // Inicializar la firma con R
-    ByteVector SIG = R;
 
     // Paso 5: Calcular el digest del mensaje
     ByteVector digest;
-    if (!H_msg(R, PKseed, PKroot, M, digest)) {
-        throw std::runtime_error("Error en H_msg durante slh_sign_internal");
+    if (!H_msg(R, privateKey.pkSeed, privateKey.pkRoot, M, digest)) {
+        throw std::runtime_error("Error en H_msg");
     }
 
-    // Paso 6: Extraer los primeros k*a bits del digest para md
+    // Paso 6: Extraer md para FORS
     const size_t md_bits = k * a;
-    const size_t md_bytes = (md_bits + 7) / 8;  // Redondear hacia arriba
+    const size_t md_bytes = (md_bits + 7) / 8;
     ByteVector md(digest.begin(), digest.begin() + md_bytes);
 
-    // Pasos 7-8: Calcular tmp_idx_tree y tmp_idx_leaf
-    // tmp_idx_tree ← digest[⌈k·a/8⌉ : ⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉]
+    // Pasos 7-10: Calcular índices para el árbol
     const size_t tree_idx_start = md_bytes;
     const size_t tree_idx_bits = h - h_prima / d;
-    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;  // Redondear hacia arriba
+    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;
     ByteVector tmp_idx_tree(digest.begin() + tree_idx_start,
                             digest.begin() + tree_idx_start + tree_idx_bytes);
 
-    // tmp_idx_leaf ← digest[⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉ : ⌈k·a/8⌉ + ⌈(h-h′/d)/8⌉ + ⌈h′/8d⌉]
     const size_t leaf_idx_start = tree_idx_start + tree_idx_bytes;
     const size_t leaf_idx_bits = h_prima / d;
-    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;  // Redondear hacia arriba
+    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    // Paso 9-10: Convertir a enteros
-    // idx_tree ← toInt(tmp_idx_tree, ⌈(h-h′/d)/8⌉) mod 2^(h-h′/d)
-    uint64_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+    uint32_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+    uint32_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
 
-    // idx_leaf ← toInt(tmp_idx_leaf, ⌈h′/8d⌉) mod 2^(h′/d)
-    uint64_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+    // Pasos 11-14: Generar firma FORS
+    adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+    adrs.setTypeAndClear(FORS_TREE);
+    adrs.setKeyPairAddress(idx_leaf);
+    ByteVector SIG_FORS = fors_sign(md, privateKey.seed, privateKey.pkSeed, adrs);
 
-    // Pasos 11-14: Preparar ADRS para la firma FORS y generar la firma FORS
+    // Paso 16: Calcular la clave pública FORS
+    ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, privateKey.pkSeed, adrs);
+
+    // Paso 17-18: Generar la firma HT
+    ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree, idx_leaf);
+
+    // Crear y devolver la estructura de firma
+    SLH_DSA_Signature signature;
+    signature.randomness = R;
+    signature.forsSignature = SIG_FORS;
+    signature.htSignature = SIG_HT;
+
+    return signature;
+}
+// Algoritmo 20: slh_verify_internal
+bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK) {
+    // Obtener parámetros relevantes
+    const size_t n = params->n;
+    const uint32_t k = params->k;
+    const uint32_t a = params->a;
+    const uint32_t h = params->h;
+    const uint32_t d = params->d;
+    const uint32_t h_prima = params->h_prima;
+    const uint32_t lg_w = params->lg_w;
+
+    // Calcular len para el tamaño de la firma
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;
+
+    // Paso 1-3: Verificar que el tamaño de la firma sea correcto
+    if (SIG.size() != (1 + k * (1 + a) + h + d * len) * n) {
+        return false;
+    }
+
+    // Paso 4: Inicializar ADRS
+    ADRS adrs;
+
+    // Paso 5-7: Extraer componentes de la firma
+    ByteVector R(SIG.begin(), SIG.begin() + n);  // R ← SIG.getR()
+
+    // SIG_FORS ← SIG.getSIG_FORS()
+    size_t fors_offset = n;
+    size_t fors_size = k * (1 + a) * n;
+    ByteVector SIG_FORS(SIG.begin() + fors_offset, SIG.begin() + fors_offset + fors_size);
+
+    // SIG_HT ← SIG.getSIG_HT()
+    size_t ht_offset = fors_offset + fors_size;
+    ByteVector SIG_HT(SIG.begin() + ht_offset, SIG.end());
+
+    // Paso 8: Calcular el digest del mensaje
+    ByteVector digest;
+    if (!H_msg(R, PK.seed, PK.root, M, digest)) {
+        return false;  // Error en H_msg
+    }
+
+    // Paso 9: Extraer md para FORS
+    const size_t md_bits = k * a;
+    const size_t md_bytes = (md_bits + 7) / 8;
+    ByteVector md(digest.begin(), digest.begin() + md_bytes);
+
+    // Pasos 10-13: Extraer índices para el árbol
+    const size_t tree_idx_start = md_bytes;
+    const size_t tree_idx_bits = h - h_prima / d;
+    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;
+    ByteVector tmp_idx_tree(digest.begin() + tree_idx_start,
+                            digest.begin() + tree_idx_start + tree_idx_bytes);
+
+    const size_t leaf_idx_start = tree_idx_start + tree_idx_bytes;
+    const size_t leaf_idx_bits = h_prima / d;
+    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;
+    ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
+                            digest.begin() + leaf_idx_start + leaf_idx_bytes);
+
+    uint32_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+    uint32_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+
+    // Pasos 14-16: Configurar ADRS para calcular la clave pública FORS
     adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
     adrs.setTypeAndClear(FORS_TREE);
     adrs.setKeyPairAddress(idx_leaf);
 
-    ByteVector SIG_FORS = fors_sign(md, SKseed, PKseed, adrs);
+    // Paso 17: Calcular la clave pública FORS a partir de la firma
+    ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, PK.seed, adrs);
 
-    // Paso 15: Añadir la firma FORS a la firma SLH-DSA
-    SIG.insert(SIG.end(), SIG_FORS.begin(), SIG_FORS.end());
+    // Paso 18: Verificar la firma HT y devolver el resultado
+    return ht_verify(PK_FORS, SIG_HT, PK.seed, idx_tree, idx_leaf, PK.root);
+}
 
-    // Paso 16: Calcular la clave pública FORS
-    ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, PKseed, adrs);
+// Algoritmo 21: slh_keygen
+std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen() {
+    // Obtener el tamaño en bytes para las semillas (n)
+    const size_t n = params->n;
 
-    // Paso 17-18: Generar la firma HT con la clave pública FORS como mensaje y añadirla a SIG
-    ByteVector SIG_HT = ht_sign(PK_FORS, SKseed, PKseed, idx_tree, idx_leaf);
-    SIG.insert(SIG.end(), SIG_HT.begin(), SIG_HT.end());
+    // Crear vectores para almacenar los bytes aleatorios
+    ByteVector SKseed(n);
+    ByteVector SKprf(n);
+    ByteVector PKseed(n);
 
-    // Paso 19: Devolver la firma completa
-    return SIG;
+    // Generar valores aleatorios para SK.seed, SK.prf y PK.seed usando OpenSSL
+    if (RAND_bytes(SKseed.data(), n) != 1 ||
+        RAND_bytes(SKprf.data(), n) != 1 ||
+        RAND_bytes(PKseed.data(), n) != 1) {
+        // Error en la generación de bytes aleatorios
+        throw std::runtime_error("Error generating secure random bytes with OpenSSL");
+    }
+
+    // Llamar a slh_keygen_internal para generar el par de claves
+    return slh_keygen_internal(SKseed, SKprf, PKseed);
+}
+
+// Algoritmo 22: slh_sign - Genera una firma SLH-DSA pura
+ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_PrivateKey& SK) {
+    // Paso 1-3: Verificar que el tamaño del contexto no sea demasiado grande
+    if (ctx.size() > 255) {
+        // Devolver un error si el contexto es demasiado largo
+        throw std::invalid_argument("Context string is too long (must be <= 255 bytes)");
+    }
+
+    // Paso 4-7: Para la variante determinista, omitimos la generación de addrnd
+    ByteVector addrnd;
+
+    // En la variante no determinista, descomentar estas líneas:
+    /*
+    addrnd.resize(params->n);
+    if (RAND_bytes(addrnd.data(), params->n) != 1) {
+        // Error en la generación de bytes aleatorios
+        throw std::runtime_error("Error generating secure random bytes for addrnd");
+    }
+    */
+
+    // Paso 8: Construir M' concatenando toByte(0,1) || toByte(|ctx|,1) || ctx || M
+    ByteVector M_prime;
+
+    // Agregar toByte(0,1) - un byte con valor 0 que indica "mensaje"
+    M_prime.push_back(0);
+
+    // Agregar toByte(|ctx|,1) - un byte con la longitud del contexto
+    M_prime.push_back(static_cast<uint8_t>(ctx.size()));
+
+    // Agregar ctx - el contexto
+    M_prime.insert(M_prime.end(), ctx.begin(), ctx.end());
+
+    // Agregar M - el mensaje
+    M_prime.insert(M_prime.end(), M.begin(), M.end());
+
+    // Paso 9: Llamar a slh_sign_internal con M', SK y addrnd
+    SLH_DSA_Signature signature = slh_sign_internal(M_prime, SK, addrnd);
+
+    // Paso 10: Convertir la estructura de firma a un vector de bytes y devolver
+    return signature.toBytes();
+}
+
+// Algoritmo 23: slh_verify - Verifica una firma SLH-DSA con un preash (no implementado)
+
+// Algoritmo 24: slh_verify - Verifica una firma SLH-DSA pura
+bool slh_verify(const ByteVector& M, const ByteVector& SIG, const ByteVector& ctx, const SLH_DSA_PublicKey& PK) {
+    // Paso 1-3: Verificar que el tamaño del contexto no sea demasiado grande
+    if (ctx.size() > 255) {
+        // Devolver false si el contexto es demasiado largo
+        return false;
+    }
+
+    // Paso 4: Construir M' concatenando toByte(0,1) || toByte(|ctx|,1) || ctx || M
+    ByteVector M_prime;
+
+    // Agregar toByte(0,1) - un byte con valor 0 que indica "mensaje"
+    M_prime.push_back(0);
+
+    // Agregar toByte(|ctx|,1) - un byte con la longitud del contexto
+    M_prime.push_back(static_cast<uint8_t>(ctx.size()));
+
+    // Agregar ctx - el contexto
+    M_prime.insert(M_prime.end(), ctx.begin(), ctx.end());
+
+    // Agregar M - el mensaje
+    M_prime.insert(M_prime.end(), M.begin(), M.end());
+
+    // Paso 5: Llamar a slh_verify_internal con M', SIG y PK
+    return slh_verify_internal(M_prime, SIG, PK);
 }
