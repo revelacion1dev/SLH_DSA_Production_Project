@@ -6,9 +6,14 @@
 #include <stdexcept>
 
 
+// Inicialización de miembros estáticos
+SLH_DSA_ParamSet FIPS205ConfigManager::current_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_256s;
+const SLH_DSA_Params* FIPS205ConfigManager::current_params = nullptr;
+std::mutex FIPS205ConfigManager::config_mutex;
+bool FIPS205ConfigManager::is_initialized = false;
 
-// Tabla de parámetros para cada variante de SLH-DSA
-constexpr SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] = {
+// Tabla de parámetros
+const SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] = {
         {"SLH-DSA-SHA2-128s",   16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  false},
         {"SLH-DSA-SHAKE-128s",  16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  true },
         {"SLH-DSA-SHA2-128f",   16, 66, 22,  3,  6, 33, 4, 34, 1, 32, 17088,  false},
@@ -23,23 +28,196 @@ constexpr SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUN
         {"SLH-DSA-SHAKE-256f",  32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  true }
 };
 
-// Función para obtener los parámetros de un esquema dado
-inline const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set) {
+// Función get_params
+const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set) {
     auto index = static_cast<size_t>(set);
     if (index >= static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT))
         return nullptr;
     return &PARAMS[index];
 }
 
-// Get the parameters based on the schema
-const SLH_DSA_Params* params = get_params(SLH_DSA_Config::SCHEMA);
+// Declaramos las funciones auxiliares asociadas a las estructuras tanto ñla clave publica/privada como la firma
+
+// Clave Publica :
+ByteVector SLH_DSA_PublicKey::toBytes() const {
+    // La clave pública consiste en PK.seed || PK.root
+    ByteVector result;
+    result.reserve(seed.size() + root.size());
+
+    // Concatenar PK.seed
+    result.insert(result.end(), seed.begin(), seed.end());
+
+    // Concatenar PK.root
+    result.insert(result.end(), root.begin(), root.end());
+
+    return result;
+}
+
+SLH_DSA_PublicKey SLH_DSA_PublicKey::fromBytes(const ByteVector& data) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
+    // Verificar que el tamaño sea correcto (2*n bytes)
+    const size_t n = params->n;
+    const size_t expected_size = 2 * n;  // PK.seed (n bytes) + PK.root (n bytes)
+
+    if (data.size() != expected_size) {
+        throw std::invalid_argument("Invalid public key size. Expected " +
+                                    std::to_string(expected_size) + " bytes, got " +
+                                    std::to_string(data.size()) + " bytes");
+    }
+
+    SLH_DSA_PublicKey pk;
+
+    // Extraer PK.seed (primeros n bytes)
+    pk.seed = ByteVector(data.begin(), data.begin() + n);
+
+    // Extraer PK.root (siguientes n bytes)
+    pk.root = ByteVector(data.begin() + n, data.begin() + 2 * n);
+
+    return pk;
+}
+
+// Clave Privada
+
+ByteVector SLH_DSA_PrivateKey::toBytes() const {
+    // La clave privada consiste en SK.seed || SK.prf || PK.seed || PK.root
+    ByteVector result;
+    result.reserve(seed.size() + prf.size() + pkSeed.size() + pkRoot.size());
+
+    // Concatenar SK.seed
+    result.insert(result.end(), seed.begin(), seed.end());
+
+    // Concatenar SK.prf
+    result.insert(result.end(), prf.begin(), prf.end());
+
+    // Concatenar PK.seed
+    result.insert(result.end(), pkSeed.begin(), pkSeed.end());
+
+    // Concatenar PK.root
+    result.insert(result.end(), pkRoot.begin(), pkRoot.end());
+
+    return result;
+}
+
+SLH_DSA_PrivateKey SLH_DSA_PrivateKey::fromBytes(const ByteVector& data) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
+    // Verificar que el tamaño sea correcto (4*n bytes)
+    const size_t n = params->n;
+    const size_t expected_size = 4 * n;  // SK.seed + SK.prf + PK.seed + PK.root (cada uno n bytes)
+
+    if (data.size() != expected_size) {
+        throw std::invalid_argument("Invalid private key size. Expected " +
+                                    std::to_string(expected_size) + " bytes, got " +
+                                    std::to_string(data.size()) + " bytes");
+    }
+
+    SLH_DSA_PrivateKey sk;
+
+    // Extraer SK.seed (primeros n bytes)
+    sk.seed = ByteVector(data.begin(), data.begin() + n);
+
+    // Extraer SK.prf (siguientes n bytes)
+    sk.prf = ByteVector(data.begin() + n, data.begin() + 2 * n);
+
+    // Extraer PK.seed (siguientes n bytes)
+    sk.pkSeed = ByteVector(data.begin() + 2 * n, data.begin() + 3 * n);
+
+    // Extraer PK.root (últimos n bytes)
+    sk.pkRoot = ByteVector(data.begin() + 3 * n, data.begin() + 4 * n);
+
+    return sk;
+}
+
+SLH_DSA_PublicKey SLH_DSA_PrivateKey::getPublicKey() const {
+    SLH_DSA_PublicKey pk;
+    pk.seed = pkSeed;  // PK.seed es una copia de la clave privada
+    pk.root = pkRoot;  // PK.root es una copia de la clave privada
+
+    return pk;
+}
+
+// Funciones auxiliares a la firma
+ByteVector SLH_DSA_Signature::toBytes() const {
+    // La firma consiste en R || SIG_FORS || SIG_HT
+    ByteVector result;
+    result.reserve(randomness.size() + forsSignature.size() + htSignature.size());
+
+    // Concatenar R (randomness)
+    result.insert(result.end(), randomness.begin(), randomness.end());
+
+    // Concatenar SIG_FORS
+    result.insert(result.end(), forsSignature.begin(), forsSignature.end());
+
+    // Concatenar SIG_HT
+    result.insert(result.end(), htSignature.begin(), htSignature.end());
+
+    return result;
+}
+
+SLH_DSA_Signature SLH_DSA_Signature::fromBytes(const ByteVector& data) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
+    // Obtener parámetros para calcular los tamaños esperados
+    const size_t n = params->n;
+    const uint32_t k = params->k;
+    const uint32_t a = params->a;
+    const uint32_t h = params->h;
+    const uint32_t d = params->d;
+    const uint32_t lg_w = params->lg_w;
+
+    // Calcular len para WOTS+
+    const size_t len1 = (8 * n + lg_w - 1) / lg_w;
+    const size_t len2 = gen_len2(n, lg_w);
+    const size_t len = len1 + len2;
+
+    // Calcular tamaños esperados de cada componente
+    const size_t r_size = n;                          // R tiene n bytes
+    const size_t fors_size = k * (1 + a) * n;        // SIG_FORS tiene k(1+a)·n bytes
+    const size_t ht_size = (h + d * len) * n;        // SIG_HT tiene (h+d·len)·n bytes
+    const size_t expected_total = r_size + fors_size + ht_size;
+
+    // Verificar que el tamaño sea correcto
+    if (data.size() != expected_total) {
+        throw std::invalid_argument("Invalid signature size. Expected " +
+                                    std::to_string(expected_total) + " bytes, got " +
+                                    std::to_string(data.size()) + " bytes");
+    }
+
+    SLH_DSA_Signature sig;
+
+    // Extraer R (primeros n bytes)
+    sig.randomness = ByteVector(data.begin(), data.begin() + r_size);
+
+    // Extraer SIG_FORS (siguientes k(1+a)·n bytes)
+    size_t fors_start = r_size;
+    sig.forsSignature = ByteVector(data.begin() + fors_start,
+                                   data.begin() + fors_start + fors_size);
+
+    // Extraer SIG_HT (resto de bytes)
+    size_t ht_start = fors_start + fors_size;
+    sig.htSignature = ByteVector(data.begin() + ht_start, data.end());
+
+    return sig;
+}
 
 
-// Definimos un tipo para la firma
 
-
-
-//
 // Función SHAKE256 para calcular el hash segun 11.1
 bool computeShake256(const ByteVector& input, ByteVector& output, size_t outputLen) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
@@ -99,6 +277,12 @@ bool concatenateAndHash(const std::vector<ByteVector>& inputs, ByteVector& outpu
 
 bool H_msg(const ByteVector& R, const ByteVector& PKseed, const ByteVector& PKroot,
            const ByteVector& M, ByteVector& output) {
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Get the correct output length (m value from params)
     size_t outputLen = params->m;
     return concatenateAndHash({R, PKseed, PKroot, M}, output, outputLen);
@@ -106,6 +290,12 @@ bool H_msg(const ByteVector& R, const ByteVector& PKseed, const ByteVector& PKro
 
 bool PRF(const ByteVector& PKseed, const ByteVector& SKseed, const ByteVector& ADRS,
          ByteVector& output) {
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Output length is n from the parameters
     size_t outputLen = params->n;
     return concatenateAndHash({PKseed, ADRS, SKseed}, output, outputLen);
@@ -113,6 +303,13 @@ bool PRF(const ByteVector& PKseed, const ByteVector& SKseed, const ByteVector& A
 
 bool PRF_msg(const ByteVector& SKprf, const ByteVector& opt_rand, const ByteVector& M,
              ByteVector& output) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Output length is n from the parameters
     size_t outputLen = params->n;
     return concatenateAndHash({SKprf, opt_rand, M}, output, outputLen);
@@ -120,6 +317,13 @@ bool PRF_msg(const ByteVector& SKprf, const ByteVector& opt_rand, const ByteVect
 
 bool F(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M1,
        ByteVector& output) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Output length is n from the parameters
     size_t outputLen = params->n;
     return concatenateAndHash({PKseed, ADRS, M1}, output, outputLen);
@@ -127,6 +331,13 @@ bool F(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M1,
 
 bool H(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M2,
        ByteVector& output) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Output length is n from the parameters
     size_t outputLen = params->n;
     return concatenateAndHash({PKseed, ADRS, M2}, output, outputLen);
@@ -134,6 +345,13 @@ bool H(const ByteVector& PKseed, const ByteVector& ADRS, const ByteVector& M2,
 
 bool T_l(const ByteVector& PKseed, const ByteVector& ADRS, std::vector<ByteVector> Ml,
          ByteVector& output) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Comprobamos que Ml no esta vacio / es nulo
     if (Ml.empty()) return false ;
 
@@ -328,7 +546,7 @@ std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len) {
 }
 
 // Algoritmo 5: chain(X, i, s, PK.seed, ADRS)
-ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs, size_t n) {
+ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs) {
     // If s is 0, return X
     if (s == 0) {
         return X;
@@ -354,6 +572,13 @@ ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed,
 }
 // Algoritmo 6: wots_pkGen(SK.seed, PK.seed, ADRS) modificado
 ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener todos los parámetros necesarios del objeto params global
     const size_t n = params->n;
     const uint32_t lg_w = params->lg_w;
@@ -391,7 +616,7 @@ ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS a
 
         // La w es 2^lg_w como se define en la ecuación (5.1)
         const uint32_t w = 1 << lg_w;
-        tmp[i] = chain(sk, 0, w - 1, PKseed, adrs, n);
+        tmp[i] = chain(sk, 0, w - 1, PKseed, adrs);
     }
 
     // Create WOTS+ public key address
@@ -410,6 +635,13 @@ ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS a
 
 // Algoritmo 7: wots_sign(M, SK.seed, PK.seed, ADRS)
 ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener los parámetros necesarios del esquema configurado
     const size_t n = params->n;
     const uint32_t w = 1 << params->lg_w;  // w = 2^lg_w
@@ -482,7 +714,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
         adrs.setChainAddress(i);
 
         // Calcular el valor de firma para la cadena i usando msg_complete[i]
-        ByteVector sig_part = chain(sk, 0, msg_complete[i], PKseed, adrs, n);
+        ByteVector sig_part = chain(sk, 0, msg_complete[i], PKseed, adrs);
 
         // Copiar este valor a la posición correspondiente en sig
         std::copy(sig_part.begin(), sig_part.end(), sig.begin() + i * n);
@@ -492,6 +724,13 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
 }
 // Algoritmo 8: wots_pkFromSig(sig, M, PK.seed, ADRS)
 ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener los parámetros necesarios del esquema configurado
     const size_t n = params->n;
     const uint32_t w = 1 << params->lg_w;  // w = 2^lg_w
@@ -558,7 +797,7 @@ ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const Byte
 
         // Calcular la parte correspondiente de la clave pública
         // tmp[i] <- chain(sig[i], msg[i], w-1-msg[i], PK.seed, ADRS)
-        tmp[i] = chain(sig_i, msg_complete[i], w - 1 - msg_complete[i], PKseed, pkADRS, n);
+        tmp[i] = chain(sig_i, msg_complete[i], w - 1 - msg_complete[i], PKseed, pkADRS);
     }
 
     // Crear dirección para la clave pública WOTS+
@@ -621,6 +860,13 @@ ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const Byt
 // Algoritmo 10: xmss_sign(M, SK.seed, idx, PK.seed, ADRS)
 ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx,
                      const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros del esquema configurado
     const uint32_t h_prima = params->h_prima; // altura del árbol XMSS
 
@@ -665,6 +911,13 @@ ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx
 // Algoritmo 11: xmss_pkFromSig(idx, SIG_XMSS, M, PK.seed, ADRS)
 ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
                           const ByteVector& M, const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros del esquema configurado
     const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
     const uint32_t h_prima = params->h_prima; // Altura del árbol XMSS
@@ -742,6 +995,13 @@ ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
 // Algoritmo 12: ht_sign(M, SK.seed, PK.seed, idx_tree, idx_leaf)
 ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed,
                    uint32_t idx_tree, uint32_t idx_leaf) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros relevantes del esquema configurado
     const uint32_t d = params->d;           // Número de capas en el árbol híper
     const uint32_t h_prima = params->h_prima; // Altura de cada árbol XMSS
@@ -794,6 +1054,13 @@ ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVect
 // Algoritmo 13: ht_verify(M, SIG_HT, PK.seed, idx_tree, idx_leaf, PK.root)
 bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed,
                uint32_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros relevantes del esquema configurado
     const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
     const uint32_t d = params->d;       // Número de capas en el árbol híper
@@ -856,6 +1123,13 @@ bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& 
 
 // Algoritmo 14: fors_skGen(SK.seed, PK.seed, ADRS, idx)
 ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs, uint32_t idx) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener el tamaño del valor secreto (n bytes) del esquema configurado
     const size_t n = params->n;
 
@@ -883,6 +1157,13 @@ ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS a
 // Algoritmo 15: fors_node(SK.seed, i, z, PK.seed, ADRS)
 ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
                      const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener el tamaño del valor secreto (n bytes) del esquema configurado
     const size_t n = params->n;
 
@@ -936,6 +1217,13 @@ ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
 // Algoritmo 16: fors_sign(md, SK.seed, PK.seed, ADRS)
 ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
                      const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros relevantes del esquema configurado
     const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
     const uint32_t k = params->k;       // Número de árboles en el bosque FORS
@@ -990,6 +1278,13 @@ ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
 // Algoritmo 17: fors_pkFromSig(SIG_FORS, md, PK.seed, ADRS)
 ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
                           const ByteVector& PKseed, ADRS adrs) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros relevantes del esquema configurado
     const size_t n = params->n;         // Tamaño en bytes del nivel de seguridad
     const uint32_t k = params->k;       // Número de árboles en el bosque FORS
@@ -1094,6 +1389,12 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
         const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed) {
 
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
+
     // Obtener parámetros relevantes del esquema configurado
     const uint32_t d = params->d;
     const uint32_t h_prima = params->h_prima;
@@ -1123,6 +1424,12 @@ std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
 SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
                                     const SLH_DSA_PrivateKey& privateKey,
                                     const ByteVector& addrnd) {
+
+    // Obtener los parámetros actuales del config manager
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+    if (!params) {
+        throw std::runtime_error("SLH_DSA_Params not initialized. Call FIPS205ConfigManager::initialize() first.");
+    }
     // Obtener parámetros relevantes
     const size_t n = params->n;
     const uint32_t k = params->k;
@@ -1192,6 +1499,9 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
 }
 // Algoritmo 20: slh_verify_internal
 bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK) {
+
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
+
     // Obtener parámetros relevantes
     const size_t n = params->n;
     const uint32_t k = params->k;
@@ -1267,6 +1577,8 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
 
 // Algoritmo 21: slh_keygen
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen() {
+    // Obtener los parámetros actuales del esquema SLH-DSA
+    const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     // Obtener el tamaño en bytes para las semillas (n)
     const size_t n = params->n;
 

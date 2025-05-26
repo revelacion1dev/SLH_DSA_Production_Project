@@ -1,18 +1,48 @@
 package com.revelacion1.tfg_parte1
 
+/**
+ * Interface JNI corregida para FIPS205 con ConfigManager integrado
+ *
+ * CAMBIOS PRINCIPALES:
+ * - Eliminados parámetros redundantes (n, len, h, d, k, a, wots_len)
+ * - Agregadas funciones de gestión del ConfigManager
+ * - Funciones simplificadas que usan parámetros automáticamente
+ * - Nuevas capacidades de debugging y validación
+ */
 class FunctionLink {
 
+    companion object {
+        init {
+            System.loadLibrary("TFG_PARTE1")
+        }
+    }
 
-    // Native method declarations
-    external fun genLen2(n: Long, lg_w: Long): Long
+    // CONFIGURATION MANAGER
+
+    external fun initializeConfig(defaultScheme: Int): Boolean
+    external fun setParameterScheme(scheme: Int): Boolean
+    external fun getCurrentParameters(): IntArray
+    external fun getCurrentSchemaName(): String
+    external fun isUsingCustomParameters(): Boolean
+    external fun setCustomParameters(n: Int, h: Int, d: Int, h_prima: Int, a: Int, k: Int, lg_w: Int): Boolean
+    external fun resetToStandard(scheme: Int): Boolean
+
+    // Debugging parametros auxiliares
+    external fun printCurrentConfig()
+    external fun calculateDerivedParams(): IntArray
+    external fun getAllSchemaParameters(schemeIndex: Int): IntArray
+
+    // Basic Functions
+    external fun genLen2(n : Int , lg_w: Int): Long
     external fun toInt(x: ByteArray, n: Int): Long
     external fun toByte(x: Long, n: Int): ByteArray
-    external fun base2b(x: ByteArray, b: Int, out_len: Int ): IntArray
+    external fun base2b(x: ByteArray, b: Int, out_len: Int): IntArray
 
-    // Nuevos métodos nativos para ADRS
-    external fun createADRS(): Long  // Devuelve un puntero/handle a la instancia de ADRS
-    external fun disposeADRS(adrsPtr: Long)  // Libera la memoria de la instancia de ADRS
-    external fun getAddressBytes(adrsPtr: Long) : ByteArray // Obtiene los 32 bytes de la dirección
+    // ADRS Principal
+
+    external fun createADRS(): Long
+    external fun disposeADRS(adrsPtr: Long)
+    external fun getAddressBytes(adrsPtr: Long): ByteArray
     external fun setLayerAddress(adrsPtr: Long, layer: Int)
     external fun setTreeAddress(adrsPtr: Long, tree: ByteArray)
     external fun setTypeAndClear(adrsPtr: Long, type: Int)
@@ -24,47 +54,64 @@ class FunctionLink {
     external fun getKeyPairAddress(adrsPtr: Long): Long
     external fun getTreeIndex(adrsPtr: Long): Long
 
-    // Metodo para verificar que la importacion de shake es correcta
-    external fun computeHash(byteArray: ByteArray, version: Int): ByteArray
 
-    // Algoritmos WOTS+
-    external fun chain(X: ByteArray, i: Int, s: Int, PKseed: ByteArray, adrsPtr: Long, n: Int): ByteArray
-    external fun wotsPkGen(SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long, n: Int, len: Int): ByteArray
+    // ALGORITMOS  Para computo de Hash
+    external fun computeHash(byteArray: ByteArray, outputLength: Int): ByteArray
+
+    // ALGORITMOS WOTS+
+    external fun chain(X: ByteArray, i: Int, s: Int, PKseed: ByteArray, adrsPtr: Long): ByteArray
+    external fun wotsPkGen(SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
     external fun wotsSign(M: ByteArray, SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
     external fun wotsPkFromSig(sig: ByteArray, M: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
 
-    // Algoritmos XMSS
-    external fun xmssNode(SKseed: ByteArray, i: Int, z: Int, PKseed: ByteArray, adrsPtr: Long, n: Int, wots_len: Int): ByteArray
-    external fun xmssSign(M: ByteArray, SKseed: ByteArray, idx: Int, PKseed: ByteArray, adrsPtr: Long, n: Int, wots_len: Int, h: Int): ByteArray
-    external fun xmssPkFromSig(idx: Int, SIGXMSS: ByteArray, M: ByteArray, PKseed: ByteArray, adrsPtr: Long, n: Int, wots_len: Int, h: Int): ByteArray
+    // ALGORITMOS XMSS
 
-    // Algoritmos HT (Hypertree)
-    external fun htSign(M: ByteArray, SKseed: ByteArray, PKseed: ByteArray, idxtree: Long, idxleaf: Int, n: Int, wots_len: Int, h: Int, d: Int): ByteArray
-    external fun htVerify(M: ByteArray, SIGHT: ByteArray, PKseed: ByteArray, idxtree: Long, idxleaf: Int, PKroot: ByteArray, n: Int, wots_len: Int, h: Int, d: Int): Boolean
-
-    // Algoritmos FORS
-    external fun forsSkGen(SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long, idx: Int, n: Int): ByteArray
-    external fun forsNode(SKseed: ByteArray, i: Int, z: Int, PKseed: ByteArray, adrsPtr: Long, n: Int): ByteArray
-    external fun forsSign(md: ByteArray, SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long, n: Int, k: Int, a: Int): ByteArray
-    external fun forsPkFromSig(SIGFORS: ByteArray, md: ByteArray, PKseed: ByteArray, adrsPtr: Long, n: Int, k: Int, a: Int): ByteArray
-
-    // Algoritmos SLH-DSA principales
-    external fun slhKeyGen(paramSet: Int): Array<ByteArray> // Retorna [publicKey, privateKey]
-    external fun slhSign(M: ByteArray, ctx: ByteArray, SK: ByteArray, paramSet: Int): ByteArray
-    external fun hashSlhSign(M: ByteArray, ctx: ByteArray, PH: ByteArray, SK: ByteArray, paramSet: Int): ByteArray
-    external fun slhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PK: ByteArray, paramSet: Int): Boolean
-    external fun hashSlhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PH: ByteArray, PK: ByteArray, paramSet: Int): Boolean
+    external fun xmssNode(SKseed: ByteArray, i: Int, z: Int, PKseed: ByteArray, adrsPtr: Long): ByteArray
+    external fun xmssSign(M: ByteArray, SKseed: ByteArray, idx: Int, PKseed: ByteArray, adrsPtr: Long): ByteArray
+    external fun xmssPkFromSig(idx: Int, SIGXMSS: ByteArray, M: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
 
 
+    // ALGORITMOS HT
 
-    // Helper method for testing
-    fun formatBase2bResult(result: IntArray): String {
-        return result.joinToString(", ", prefix = "[", postfix = "]")
-    }
+    external fun htSign(M: ByteArray, SKseed: ByteArray, PKseed: ByteArray, idxtree: Long, idxleaf: Int): ByteArray
+    external fun htVerify(M: ByteArray, SIGHT: ByteArray, PKseed: ByteArray, idxtree: Long, idxleaf: Int, PKroot: ByteArray): Boolean
+
+    // ALGORITMOS FORS
+
+    external fun forsSkGen(SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long, idx: Int): ByteArray
+    external fun forsNode(SKseed: ByteArray, i: Int, z: Int, PKseed: ByteArray, adrsPtr: Long): ByteArray
+    external fun forsSign(md: ByteArray, SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
+    external fun forsPkFromSig(SIGFORS: ByteArray, md: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
+
+    // ALGORITMOS SLH-DSA PRINCIPALES (ESTAS SON LAS INTERFACES QUE DEBEN SER PUBLICAS EN LA LIBRERIA)
+
+    external fun slhKeyGen(): Array<ByteArray>
+    external fun slhSign(M: ByteArray, ctx: ByteArray, SK: ByteArray): ByteArray
+    external fun slhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PK: ByteArray): Boolean
+
+    // Todo : Implementar la version del algoritmo con preHashing
+    external fun hashSlhSign(M: ByteArray, ctx: ByteArray, PH: ByteArray, SK: ByteArray): ByteArray
+    external fun hashSlhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PH: ByteArray, PK: ByteArray): Boolean
 
 
-    // Helper para formatear bytes en hexadecimal
-    fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { String.format("%02X", it) }
+    /**
+     * Clase de datos para información del esquema
+     */
+    data class SchemeInfo(
+        val name: String,
+        val n: Int,
+        val h: Int,
+        val d: Int,
+        val h_prima: Int,
+        val a: Int,
+        val k: Int,
+        val lg_w: Int,
+        val m: Int,
+        val securityCategory: Int,
+        val isCustom: Boolean
+    ) {
+        override fun toString(): String {
+            return "$name (n=$n, seg=$securityCategory)" + if (isCustom) " [CUSTOM]" else ""
+        }
     }
 }

@@ -6,7 +6,8 @@
 #include <cstdint>
 #include <stdexcept>
 #include <algorithm>
-#include <utility> // Para std::pair
+#include <utility>
+#include <mutex>
 
 // Tipo uniforme para datos binarios
 using ByteVector = std::vector<uint8_t>;
@@ -20,26 +21,21 @@ constexpr uint32_t FORS_ROOTS = 0x04;
 constexpr uint32_t WOTS_PRF = 0x05;
 constexpr uint32_t FORS_PRF = 0x06;
 
-// Enumeración para los parámetros de SLH-DSA
+// Enumeración para los parámetros de SLH-DSA (NOMBRES CORREGIDOS)
 enum class SLH_DSA_ParamSet {
-    SHA2_128S,
-    SHAKE_128S,
-    SHA2_128F,
-    SHAKE_128F,
-    SHA2_192S,
-    SHAKE_192S,
-    SHA2_192F,
-    SHAKE_192F,
-    SHA2_256S,
-    SHAKE_256S,
-    SHA2_256F,
-    SHAKE_256F,
+    SLH_DSA_SHA2_128s,      // Corregido de SHA2_128S
+    SLH_DSA_SHAKE_128s,     // Corregido de SHAKE_128S
+    SLH_DSA_SHA2_128f,
+    SLH_DSA_SHAKE_128f,
+    SLH_DSA_SHA2_192s,
+    SLH_DSA_SHAKE_192s,
+    SLH_DSA_SHA2_192f,
+    SLH_DSA_SHAKE_192f,
+    SLH_DSA_SHA2_256s,
+    SLH_DSA_SHAKE_256s,
+    SLH_DSA_SHA2_256f,
+    SLH_DSA_SHAKE_256f,
     PARAM_COUNT
-};
-
-// Configuración por defecto del esquema
-struct SLH_DSA_Config {
-    static constexpr SLH_DSA_ParamSet SCHEMA = SLH_DSA_ParamSet::SHAKE_256S;
 };
 
 // Estructura de parámetros para cada esquema
@@ -50,14 +46,140 @@ struct SLH_DSA_Params {
     bool is_shake;
 };
 
-// Tabla de parámetros para cada variante de SLH-DSA
-extern const SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)];
-
-// Función para obtener los parámetros de un esquema dado
+// Declaración adelantada
 const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set);
 
-// Variable global para acceder a los parámetros actuales
-extern const SLH_DSA_Params* params;
+// ConfigManager MEJORADO con thread-safety y validación
+class FIPS205ConfigManager {
+private:
+    static SLH_DSA_ParamSet current_schema;
+    static const SLH_DSA_Params* current_params;
+    static std::mutex config_mutex; // Para thread-safety
+    static bool is_initialized;
+
+    // Validar que los parámetros sean consistentes
+    static bool validateParams(const SLH_DSA_Params* params) {
+        if (!params) return false;
+
+        // Validaciones básicas de los parámetros
+        if (params->n == 0 || params->h == 0 || params->d == 0) return false;
+        if (params->h_prima == 0 || params->a == 0 || params->k == 0) return false;
+        if (params->lg_w == 0 || params->lg_w > 8) return false;
+
+        // Validar que h sea divisible por d
+        if (params->h % params->d != 0) return false;
+
+        // Validar que h_prima sea consistente
+        if (params->h_prima != params->h / params->d) return false;
+
+        return true;
+    }
+
+public:
+    // Inicialización thread-safe
+    static void initialize(SLH_DSA_ParamSet default_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
+        std::lock_guard<std::mutex> lock(config_mutex);
+
+        if (!is_initialized) {
+            setSchemaUnsafe(default_schema);
+            is_initialized = true;
+        }
+    }
+
+    // Función para cambiar el esquema activo (thread-safe)
+    static bool setSchema(SLH_DSA_ParamSet schema) {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        return setSchemaUnsafe(schema);
+    }
+
+    // Función para obtener parámetros actuales (thread-safe)
+    static const SLH_DSA_Params* getCurrentParams() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+
+        if (!is_initialized) {
+            // Auto-inicializar con parámetros por defecto
+            setSchemaUnsafe(SLH_DSA_ParamSet::SLH_DSA_SHAKE_256s);
+            is_initialized = true;
+        }
+
+        return current_params;
+    }
+
+    // Función para obtener el esquema actual
+    static SLH_DSA_ParamSet getCurrentSchema() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        return current_schema;
+    }
+
+    // Función para testing con parámetros custom (MEJORADA)
+    static bool setCustomParams(uint32_t n, uint32_t h, uint32_t d, uint32_t h_prima,
+                                uint32_t a, uint32_t k, uint32_t lg_w) {
+        std::lock_guard<std::mutex> lock(config_mutex);
+
+        // Calcular m según la fórmula del estándar
+        uint32_t len1 = (8 * n + lg_w - 1) / lg_w;
+        uint32_t w = 1 << lg_w;
+        uint32_t len2 = 1;
+        uint64_t max_checksum = len1 * (w - 1);
+        uint64_t capacity = w;
+        while (capacity <= max_checksum) {
+            len2++;
+            capacity *= w;
+        }
+        uint32_t len = len1 + len2;
+
+        uint32_t m = (k * a + h - h_prima + h_prima + 7) / 8;
+
+        // Calcular sig_bytes según la fórmula del estándar
+        uint32_t sig_bytes = (1 + k * (1 + a) + h + d * len) * n;
+
+        static SLH_DSA_Params custom_params = {
+                "CUSTOM", n, h, d, h_prima, a, k, lg_w, m,
+                1, // security category
+                2 * n, // pk_bytes
+                sig_bytes,
+                true // use_shake por defecto para testing
+        };
+
+        // Validar parámetros antes de aplicar
+        if (!validateParams(&custom_params)) {
+            return false;
+        }
+
+        current_params = &custom_params;
+        current_schema = static_cast<SLH_DSA_ParamSet>(-1); // Marca como custom
+
+        return true;
+    }
+
+    // Verificar si estamos usando parámetros custom
+    static bool isUsingCustomParams() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        return current_schema == static_cast<SLH_DSA_ParamSet>(-1);
+    }
+
+    // Reset a parámetros estándar (en este caso de 128 ya que se toma la version movil)
+    static bool resetToStandard(SLH_DSA_ParamSet schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        return setSchemaUnsafe(schema);
+    }
+
+private:
+    // Versión interna sin mutex (para uso interno)
+    static bool setSchemaUnsafe(SLH_DSA_ParamSet schema) {
+        const SLH_DSA_Params* new_params = get_params(schema);
+        if (!new_params || !validateParams(new_params)) {
+            return false;
+        }
+
+        current_schema = schema;
+        current_params = new_params;
+        return true;
+    }
+};
+
+// Macro para acceso thread-safe a los parámetros actuales
+#define CURRENT_PARAMS() FIPS205ConfigManager::getCurrentParams()
 
 // Estructura para la clave pública de SLH-DSA
 struct SLH_DSA_PublicKey {
@@ -80,7 +202,7 @@ struct SLH_DSA_PrivateKey {
     ByteVector toBytes() const;
     static SLH_DSA_PrivateKey fromBytes(const ByteVector& data);
 
-    // Método para obtener la clave pública correspondiente
+    // Méto do para obtener la clave pública correspondiente
     SLH_DSA_PublicKey getPublicKey() const;
 };
 
@@ -95,7 +217,7 @@ struct SLH_DSA_Signature {
     static SLH_DSA_Signature fromBytes(const ByteVector& data);
 };
 
-// Clase ADRS simplificada
+// Clase ADRS
 class ADRS {
 public:
     std::array<uint8_t, 32> addr;
@@ -161,7 +283,7 @@ bool T_l(const ByteVector& PKseed, const ByteVector& ADRS, std::vector<ByteVecto
          ByteVector& output);
 
 // Algoritmos WOTS+
-ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs, size_t n);
+ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs);
 ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs);
 ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs);
 ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS adrs);

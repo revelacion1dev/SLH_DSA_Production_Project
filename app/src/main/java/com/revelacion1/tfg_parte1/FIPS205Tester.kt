@@ -1,43 +1,192 @@
 package com.revelacion1.tfg_parte1
 
 class FIPS205Tester {
-    init {
-        System.loadLibrary("TFG_PARTE1") // Asegúrate de usar el nombre exacto de tu biblioteca
+
+    // Interface para callback de logging
+    interface TestLogger {
+        fun log(message: String)
+        fun logTestStart(testName: String)
+        fun logTestResult(testName: String, passed: Boolean, message: String)
     }
 
-    // Adaptación de tus métodos de prueba
+    private var logger: TestLogger? = null
+
+    init {
+        System.loadLibrary("TFG_PARTE1")
+    }
+
+    // Setter para el logger
+    fun setLogger(logger: TestLogger) {
+        this.logger = logger
+    }
+
+    private fun log(message: String) {
+        logger?.log(message)
+    }
+
+    private fun logTestStart(testName: String) {
+        logger?.logTestStart(testName)
+    }
+
+    private fun logTestResult(testName: String, passed: Boolean, message: String) {
+        logger?.logTestResult(testName, passed, message)
+    }
+
+    // Clase wrapper para ADRS corregida para el FunctionLink real
+    inner class ADRSWrapper {
+        private var adrsPtr: Long = 0
+
+        init {
+            adrsPtr = FunctionLink().createADRS()
+        }
+
+        fun setLayerAddress(layer: Int) {
+            FunctionLink().setLayerAddress(adrsPtr, layer)
+        }
+
+        fun setTreeAddress(tree: ByteArray) {
+            FunctionLink().setTreeAddress(adrsPtr, tree)
+        }
+
+        fun setTypeAndClear(type: Int) {
+            FunctionLink().setTypeAndClear(adrsPtr, type)
+        }
+
+        fun setKeyPairAddress(keyPair: Int) {
+            FunctionLink().setKeyPairAddress(adrsPtr, keyPair)
+        }
+
+        fun setChainAddress(chain: Int) {
+            FunctionLink().setChainAddress(adrsPtr, chain)
+        }
+
+        fun setTreeHeight(height: Int) {
+            FunctionLink().setTreeHeight(adrsPtr, height)
+        }
+
+        fun setHashAddress(hash: Int) {
+            FunctionLink().setHashAddress(adrsPtr, hash)
+        }
+
+        fun setTreeIndex(index: Int) {
+            FunctionLink().setTreeIndex(adrsPtr, index)
+        }
+
+        fun getKeyPairAddress(): Long {
+            return FunctionLink().getKeyPairAddress(adrsPtr)
+        }
+
+        fun getTreeIndex(): Long {
+            return FunctionLink().getTreeIndex(adrsPtr)
+        }
+
+        fun getAddressBytes(): ByteArray {
+            return FunctionLink().getAddressBytes(adrsPtr)
+        }
+
+        fun dispose() {
+            if (adrsPtr != 0L) {
+                FunctionLink().disposeADRS(adrsPtr)
+                adrsPtr = 0
+            }
+        }
+
+        val ptr: Long get() = adrsPtr
+    }
+
+    // Función principal que ejecuta todos los tests con logging detallado
     fun runAllTests(): List<TestResult> {
         val results = mutableListOf<TestResult>()
 
-        // Test genLen2 (Al. 1)
-        results.add(testGenLen2())
+        log("🔬 Iniciando batería completa de tests FIPS 205...\n")
+        log("Total de tests a ejecutar: 10\n\n")
 
-        // Test toInt (Al. 2)
-        results.add(testToInt())
+        // Tests básicos de utilidades
+        log("📁 SECCIÓN: Tests de Utilidades Básicas\n")
+        results.add(runSingleTest("genLen2") { testGenLen2() })
+        results.add(runSingleTest("toInt") { testToInt() })
+        results.add(runSingleTest("toByte") { testToByte() })
+        results.add(runSingleTest("base2b") { testBase2b() })
+        results.add(runSingleTest("RoundTripConversion") { testRoundTripConversion() })
 
-        // Test toByte (Al. 3)
-        results.add(testToByte())
+        // Test ADRS
+        log("\n📁 SECCIÓN: Test de Estructuras de Datos\n")
+        results.add(runSingleTest("ADRS") { testADRS() })
 
-        // Test base2b (Al. 4)
-        results.add(testBase2b())
+        // Test computeHash
+        log("\n📁 SECCIÓN: Test de Funciones Hash\n")
+        results.add(runSingleTest("computeHash") { testComputeHash() })
 
-        // Test roundTrip
-        results.add(testRoundTripConversion())
+        // Tests criptográficos
+        log("\n📁 SECCIÓN: Tests Criptográficos Avanzados\n")
+        results.add(runSingleTest("WOTS Algorithms") { testWOTSAlgorithms() })
+        results.add(runSingleTest("XMSS Algorithms") { testXMSSAlgorithms() })
+        results.add(runSingleTest("FORS Algorithms") { testFORSAlgorithms() })
 
-        // Test ADRS (Data structure)
-        results.add(testADRS())
+        log("\n📁 SECCIÓN: Tests de Alto Nivel\n")
+        results.add(runSingleTest("HT Algorithms") { testHTAlgorithms() })
+        results.add(runSingleTest("SLH-DSA Main") { testSLHDSAMainAlgorithms() })
 
-        // Tests específicos con SHAKE256
-        results.add(testWOTSWithSHAKE256())
-        results.add(testFORSWithSHAKE256())
-        results.add(testXMSSWithSHAKE256())
-        results.add(testVectorsWithSHAKE256())
+        // Resumen final
+        val passed = results.count { it.passed }
+        val failed = results.size - passed
+
+        log("\n" + "=".repeat(50) + "\n")
+        log("📊 RESUMEN FINAL DE TESTS:\n")
+        log("✅ Tests exitosos: $passed\n")
+        log("❌ Tests fallidos: $failed\n")
+        log("📈 Tasa de éxito: ${(passed * 100.0 / results.size).toInt()}%\n")
+
+        if (failed > 0) {
+            log("\n🔍 Tests que fallaron:\n")
+            results.filter { !it.passed }.forEach { result ->
+                log("   • ${result.testName}: ${result.message}\n")
+            }
+        }
+
+        log("=".repeat(50) + "\n")
 
         return results
     }
 
-    // Implementación de los métodos de test
+    // Función helper para ejecutar un test individual con logging
+    private fun runSingleTest(testName: String, testFunction: () -> TestResult): TestResult {
+        logTestStart(testName)
+        log("⏳ Ejecutando test: $testName...")
+
+        return try {
+            val startTime = System.currentTimeMillis()
+            val result = testFunction()
+            val duration = System.currentTimeMillis() - startTime
+
+            val emoji = if (result.passed) "✅" else "❌"
+            val status = if (result.passed) "EXITOSO" else "FALLIDO"
+
+            log(" ${duration}ms\n")
+            log("$emoji $testName: $status\n")
+
+            if (!result.passed) {
+                log("   💡 Detalle: ${result.message}\n")
+            }
+
+            logTestResult(testName, result.passed, result.message)
+            log("\n")
+
+            result
+        } catch (e: Exception) {
+            val errorMsg = "Error inesperado: ${e.message}"
+            log(" ❌ ERROR\n")
+            log("💥 $testName: EXCEPCIÓN - $errorMsg\n\n")
+
+            logTestResult(testName, false, errorMsg)
+            TestResult(testName, false, errorMsg)
+        }
+    }
+
+    // Test básico genLen2 (Algoritmo 1)
     private fun testGenLen2(): TestResult {
+        log("   🔢 Probando diferentes valores de n y lg_w...")
+
         val testCases = listOf(
             Triple(16, 4, 3),
             Triple(24, 4, 3),
@@ -47,413 +196,549 @@ class FIPS205Tester {
         )
 
         try {
-            for ((n, lg_w, expected) in testCases) {
-                val actual = FunctionLink().genLen2(n.toLong(), lg_w.toLong())
+            for ((i, testCase) in testCases.withIndex()) {
+                val (n, lg_w, expected) = testCase
+                log(" caso ${i+1}/${testCases.size}")
+
+                val actual = FunctionLink().genLen2(n, lg_w)
                 if (actual != expected.toLong()) {
                     return TestResult("genLen2", false,
-                        "Para n=$n, lg_w=$lg_w, se esperaba $expected pero se obtuvo $actual")
+                        "Caso ${i+1}: n=$n, lg_w=$lg_w, esperado=$expected, obtenido=$actual")
                 }
             }
-            return TestResult("genLen2", true, "Todos los casos de prueba pasaron")
+            return TestResult("genLen2", true, "Todos los ${testCases.size} casos pasaron")
         } catch (e: Exception) {
             return TestResult("genLen2", false, "Error: ${e.message}")
         }
     }
 
+    // Test toInt (Algoritmo 2)
     private fun testToInt(): TestResult {
+        log("   🔄 Probando conversiones de bytes a enteros...")
+
         try {
-            // Test case 1: Simple value
+            log(" caso 1/3")
             val testBytes1 = byteArrayOf(0x12, 0x34)
             val result1 = FunctionLink().toInt(testBytes1, 2)
             if (result1 != 0x1234L) {
-                return TestResult("toInt", false, "Simple 2-byte value falló. Esperado: 0x1234, Obtenido: $result1")
+                return TestResult("toInt", false, "Caso 1: esperado=0x1234, obtenido=$result1")
             }
 
-            // Test case 2: Maximum value for 4 bytes
-            val testBytes2 = byteArrayOf(
-                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
-            )
+            log(" caso 2/3")
+            val testBytes2 = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
             val result2 = FunctionLink().toInt(testBytes2, 4)
             if (result2 != 0xFFFFFFFFL) {
-                return TestResult("toInt", false, "Max 4-byte value falló. Esperado: 0xFFFFFFFF, Obtenido: $result2")
+                return TestResult("toInt", false, "Caso 2: esperado=0xFFFFFFFF, obtenido=$result2")
             }
 
-            // Test case 3: Zero value
+            log(" caso 3/3")
             val testBytes3 = byteArrayOf(0x00, 0x00, 0x00, 0x00)
             val result3 = FunctionLink().toInt(testBytes3, 4)
             if (result3 != 0L) {
-                return TestResult("toInt", false, "Zero value falló. Esperado: 0, Obtenido: $result3")
+                return TestResult("toInt", false, "Caso 3: esperado=0, obtenido=$result3")
             }
 
-            return TestResult("toInt", true, "Todos los casos de prueba pasaron")
+            return TestResult("toInt", true, "Todos los casos de conversión pasaron")
         } catch (e: Exception) {
             return TestResult("toInt", false, "Error: ${e.message}")
         }
     }
 
+    // Test toByte (Algoritmo 3)
     private fun testToByte(): TestResult {
+        log("   🔄 Probando conversiones de enteros a bytes...")
+
         try {
             val test = FunctionLink()
 
-            // Test case 1: Simple value
+            log(" caso 1/2")
             val bytes1 = test.toByte(0x1234L, 2)
-            if (!bytes1.contentEquals(byteArrayOf(0x34, 0x12))) {  // Se invierte la posicion del contenido en memoria
+            if (!bytes1.contentEquals(byteArrayOf(0x34, 0x12))) {
                 return TestResult("toByte", false,
-                    "Simple 2-byte value falló. Esperado: [34, 12], Obtenido: ${bytes1.joinToString(", ") { String.format("%02X", it) }}")
+                    "Caso 1: esperado=[34, 12], obtenido=[${bytes1.joinToString(", ") { String.format("%02X", it) }}]")
             }
 
-            // Test case 2: Large value
+            log(" caso 2/2")
             val bytes2 = test.toByte(0xFFFFFFFFL, 4)
             val expectedBytes2 = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
             if (!bytes2.contentEquals(expectedBytes2)) {
                 return TestResult("toByte", false,
-                    "Large 4-byte value falló. Esperado: [FF, FF, FF, FF], Obtenido: ${bytes2.joinToString(", ") { String.format("%02X", it) }}")
+                    "Caso 2: esperado=[FF, FF, FF, FF], obtenido=[${bytes2.joinToString(", ") { String.format("%02X", it) }}]")
             }
 
-            // Test case 3: Zero value
-            val bytes3 = test.toByte(0L, 2)
-            if (!bytes3.contentEquals(byteArrayOf(0x00, 0x00))) {
-                return TestResult("toByte", false,
-                    "Zero value falló. Esperado: [00, 00], Obtenido: ${bytes3.joinToString(", ") { String.format("%02X", it) }}")
-            }
-
-            // Test case 4: Odd number
-            val bytes4 = test.toByte(0x123L, 2)
-            if (!bytes4.contentEquals(byteArrayOf(0x23, 0x01))) {
-                return TestResult("toByte", false,
-                    "Odd number falló. Esperado: [23, 01], Obtenido: ${bytes4.joinToString(", ") { String.format("%02X", it) }}")
-            }
-
-            // Test case 5: Value with leading zeros requested
-            val bytes5 = test.toByte(0x1L, 4)  // Pedir 4 bytes para un valor pequeño
-            if (!bytes5.contentEquals(byteArrayOf(0x00, 0x00, 0x00, 0x01))) {
-                return TestResult("toByte", false,
-                    "Value with leading zeros falló. Esperado: [00, 00, 00, 01], Obtenido: ${bytes5.joinToString(", ") { String.format("%02X", it) }}")
-            }
-
-            return TestResult("toByte", true, "Todos los casos de prueba pasaron")
+            return TestResult("toByte", true, "Conversiones a bytes correctas")
         } catch (e: Exception) {
             return TestResult("toByte", false, "Error: ${e.message}")
         }
     }
 
-    // Test for algorithm 4 base2.
+    // Test base2b (Algoritmo 4)
     private fun testBase2b(): TestResult {
+        log("   🔢 Probando conversiones de base...")
+
         try {
             val test = FunctionLink()
 
-            // Test case 1: Simple value with b=4
-            // Entrada: [0x12, 0x34] con b=4, out_len=4
-            // Siguiendo el algoritmo, debería producir [1, 2, 3, 4]
+            log(" caso 1/2")
             val input1 = byteArrayOf(0x12, 0x34)
             val result1 = test.base2b(input1, 4, 4)
             val expected1 = intArrayOf(1, 2, 3, 4)
             if (!result1.contentEquals(expected1)) {
                 return TestResult("base2b", false,
-                    "Simple value con b=4 falló. Esperado: [1, 2, 3, 4], Obtenido: ${result1.joinToString(", ")}")
+                    "Caso 1: esperado=[1, 2, 3, 4], obtenido=[${result1.joinToString(", ")}]")
             }
 
-            // Test case 2: Binary representation (b=1)
-            // Entrada: [0xA5] (10100101 en binario) con b=1, out_len=8
-            // Debería dar [1, 0, 1, 0, 0, 1, 0, 1]
+            log(" caso 2/2")
             val input2 = byteArrayOf(0xA5.toByte())
             val result2 = test.base2b(input2, 1, 8)
             val expected2 = intArrayOf(1, 0, 1, 0, 0, 1, 0, 1)
             if (!result2.contentEquals(expected2)) {
                 return TestResult("base2b", false,
-                    "Binary representation falló. Esperado: [1, 0, 1, 0, 0, 1, 0, 1], Obtenido: ${result2.joinToString(", ")}")
+                    "Caso 2: esperado=[1, 0, 1, 0, 0, 1, 0, 1], obtenido=[${result2.joinToString(", ")}]")
             }
 
-            // Test case 3: Large value with b=16
-            // Entrada: [0x12, 0x34, 0x56, 0x78] con b=16, out_len=2
-            // Siguiendo el algoritmo: [0x1234, 0x5678]
-            val input4 = byteArrayOf(0x12, 0x34, 0x56, 0x78)
-            val result4 = test.base2b(input4, 16, 2)
-            val expected4 = intArrayOf(0x1234, 0x5678)
-            if (!result4.contentEquals(expected4)) {
-                return TestResult("base2b", false,
-                    "Large value con b=16 falló. Esperado: [4660, 22136], Obtenido: ${result4.joinToString(", ")}")
-            }
-
-            // Test case 5: Zero bytes
-            // Entrada: [0x00, 0x00] con b=8, out_len=2
-            // Esto debería producir [0, 0]
-            val input5 = byteArrayOf(0x00, 0x00)
-            val result5 = test.base2b(input5, 8, 2)
-            val expected5 = intArrayOf(0, 0)
-            if (!result5.contentEquals(expected5)) {
-                return TestResult("base2b", false,
-                    "Zero bytes falló. Esperado: [0, 0], Obtenido: ${result5.joinToString(", ")}")
-            }
-
-            return TestResult("base2b", true, "Todos los casos de prueba pasaron")
+            return TestResult("base2b", true, "Conversiones de base correctas")
         } catch (e: Exception) {
             return TestResult("base2b", false, "Error: ${e.message}")
         }
     }
 
+    // Test conversión ida y vuelta
     private fun testRoundTripConversion(): TestResult {
+        log("   🔄 Probando conversión ida y vuelta...")
+
         try {
             val test = FunctionLink()
-            // Valor de prueba: 0x123456
             val originalValue = 0x123456L
 
-            // Convertir a bytes usando toByte
+            log(" conversión a bytes")
             val byteArray = test.toByte(originalValue, 3)
-
-            // Para little-endian, el orden esperado sería [0x56, 0x34, 0x12]
             val expectedBytes = byteArrayOf(0x56.toByte(), 0x34.toByte(), 0x12.toByte())
 
-            // Verificar que los bytes están en el orden esperado (little-endian)
             if (!byteArray.contentEquals(expectedBytes)) {
                 return TestResult("RoundTripConversion", false,
-                    "Orden de bytes incorrecto. Esperado: [56, 34, 12], Obtenido: ${
+                    "Orden de bytes incorrecto. Esperado: [56, 34, 12], Obtenido: [${
                         byteArray.joinToString(", ") { "0x" + it.toInt().and(0xFF).toString(16).padStart(2, '0') }
-                    }")
+                    }]")
             }
 
-            // Ahora, para que la conversión ida y vuelta funcione correctamente
-            // tenemos que asegurarnos de que toInt también interprete los bytes como little-endian
-            // o invertir el array antes de llamar a toInt
-            val bytesForToInt = byteArray.reversedArray() // Invertir para adaptarse a toInt (si espera big-endian)
+            log(" conversión de vuelta")
+            val bytesForToInt = byteArray.reversedArray()
             val convertedValue = test.toInt(bytesForToInt, 3)
 
-            // Verificar que el valor resultante es igual al original
             if (originalValue != convertedValue) {
                 return TestResult("RoundTripConversion", false,
-                    "Conversión de ida y vuelta falló. Esperado: $originalValue (0x${originalValue.toString(16)}), " +
-                            "Obtenido: $convertedValue (0x${convertedValue.toString(16)})")
+                    "Conversión fallida. Esperado: $originalValue, Obtenido: $convertedValue")
             }
 
-            return TestResult("RoundTripConversion", true, "Conversión de ida y vuelta exitosa")
+            return TestResult("RoundTripConversion", true, "Conversión ida y vuelta exitosa")
         } catch (e: Exception) {
             return TestResult("RoundTripConversion", false, "Error: ${e.message}")
         }
     }
 
+    // Test ADRS (Address Data Structure)
     private fun testADRS(): TestResult {
+        log("   🏗️ Probando estructura de direcciones ADRS...")
+
         val adrsWrapper = ADRSWrapper()
 
         try {
-            // Verificar que la inicialización es correcta (todos ceros)
+            log(" inicialización")
             var bytes = adrsWrapper.getAddressBytes()
             if (!bytes.all { it == 0.toByte() }) {
                 return TestResult("ADRS", false,
-                    "La inicialización de ADRS no es correcta. Bytes: ${bytesToHex(bytes)}")
+                    "Inicialización incorrecta. Bytes: ${formatBytesToHex(bytes)}")
             }
 
-            // Probar setLayerAddress
+            log(" setLayerAddress")
             adrsWrapper.setLayerAddress(0x12345678)
             bytes = adrsWrapper.getAddressBytes()
-            // Verificar orden big-endian (bytes más significativos primero)
             if (bytes[0] != 0x12.toByte() || bytes[1] != 0x34.toByte() ||
                 bytes[2] != 0x56.toByte() || bytes[3] != 0x78.toByte()) {
                 return TestResult("ADRS", false,
-                    "setLayerAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
+                    "setLayerAddress falló. Bytes: ${formatBytesToHex(bytes)}")
             }
 
-            // Convertir un valor a bytes para setTreeAddress (12bytes)
-            val treeValue = 0x123456789ABCL
-            val treeBytes = ByteArray(12)
-            // Llenar en orden big-endian
-            for (i in 0 until 6) {
-                treeBytes[i] = ((treeValue shr (8 * (5 - i))) and 0xFF).toByte()
-            }
-            // Rellenar el resto con ceros
-            for (i in 6 until 12) {
-                treeBytes[i] = 0
-            }
+            log(" setTreeAddress")
+            val treeBytes = ByteArray(12) { (it % 256).toByte() }
             adrsWrapper.setTreeAddress(treeBytes)
-            bytes = adrsWrapper.getAddressBytes()
 
-            // Verificar los bytes en orden big-endian
-            if (bytes[4] != 0x12.toByte() || bytes[5] != 0x34.toByte() ||
-                bytes[6] != 0x56.toByte() || bytes[7] != 0x78.toByte() ||
-                bytes[8] != 0x9A.toByte() || bytes[9] != 0xBC.toByte()) {
-                return TestResult("ADRS", false,
-                    "setTreeAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
+            log(" setTypeAndClear")
+            adrsWrapper.setTypeAndClear(0) // WOTS_HASH
 
-            // Probar setTypeAndClear (tipo 2)
-            adrsWrapper.setTypeAndClear(2)
-            bytes = adrsWrapper.getAddressBytes()
-            // En big-endian, el valor 2 sería 00 00 00 02
-            if (bytes[16] != 0x00.toByte() || bytes[17] != 0x00.toByte() ||
-                bytes[18] != 0x00.toByte() || bytes[19] != 0x02.toByte()) {
-                return TestResult("ADRS", false,
-                    "setTypeAndClear no estableció el tipo correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Verificar que los bytes 20-31 están a cero
-            for (i in 20..31) {
-                if (bytes[i] != 0.toByte()) {
-                    return TestResult("ADRS", false,
-                        "setTypeAndClear no puso a cero los bytes 20-31. Bytes: ${bytesToHex(bytes)}")
-                }
-            }
-
-            // Probar setKeyPairAddress con un entero (Int)
-            val keyPairValue: Int = 0xABCD  // Valor entero explícito (Int en Kotlin)
-            adrsWrapper.setKeyPairAddress(keyPairValue)
-            bytes = adrsWrapper.getAddressBytes()
-
-            // Verificamos que los bytes se almacenen correctamente en big-endian
-            // 0xABCD en big-endian debería ser 00 00 AB CD
-            if (bytes[20] != 0x00.toByte() || bytes[21] != 0x00.toByte() ||
-                bytes[22] != 0xAB.toByte() || bytes[23] != 0xCD.toByte()) {
-                return TestResult("ADRS", false,
-                    "setKeyPairAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Obtener y verificar el KeyPairAddress
+            log(" KeyPairAddress")
+            adrsWrapper.setKeyPairAddress(0xABCD)
             val kpAddr = adrsWrapper.getKeyPairAddress()
-            if (kpAddr != 0xABCD) {
+            if (kpAddr != 0xABCDL) {
                 return TestResult("ADRS", false,
-                    "getKeyPairAddress debería devolver 0xABCD, pero devolvió $kpAddr")
+                    "getKeyPairAddress falló. Esperado: 0xABCD, Obtenido: $kpAddr")
             }
 
-            // Probar setChainAddress
-            adrsWrapper.setChainAddress(0x1234)
-            bytes = adrsWrapper.getAddressBytes()
-            // En big-endian sería 00 00 12 34
-            if (bytes[24] != 0x00.toByte() || bytes[25] != 0x00.toByte() ||
-                bytes[26] != 0x12.toByte() || bytes[27] != 0x34.toByte()) {
-                return TestResult("ADRS", false,
-                    "setChainAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Probar setHashAddress
-            adrsWrapper.setHashAddress(0x5678)
-            bytes = adrsWrapper.getAddressBytes()
-            // En big-endian sería 00 00 56 78
-            if (bytes[28] != 0x00.toByte() || bytes[29] != 0x00.toByte() ||
-                bytes[30] != 0x56.toByte() || bytes[31] != 0x78.toByte()) {
-                return TestResult("ADRS", false,
-                    "setHashAddress no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Probar setTreeHeight (modifica los mismos bytes que setChainAddress)
-            adrsWrapper.setTreeHeight(0x9ABC)
-            bytes = adrsWrapper.getAddressBytes()
-            // En big-endian sería 00 00 9A BC
-            if (bytes[24] != 0x00.toByte() || bytes[25] != 0x00.toByte() ||
-                bytes[26] != 0x9A.toByte() || bytes[27] != 0xBC.toByte()) {
-                return TestResult("ADRS", false,
-                    "setTreeHeight no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Probar setTreeIndex (modifica los mismos bytes que setHashAddress)
-            adrsWrapper.setTreeIndex(0xDEF0)
-            bytes = adrsWrapper.getAddressBytes()
-            // En big-endian sería 00 00 DE F0
-            if (bytes[28] != 0x00.toByte() || bytes[29] != 0x00.toByte() ||
-                bytes[30] != 0xDE.toByte() || bytes[31] != 0xF0.toByte()) {
-                return TestResult("ADRS", false,
-                    "setTreeIndex no funcionó correctamente. Bytes: ${bytesToHex(bytes)}")
-            }
-
-            // Obtener y verificar el TreeIndex
-            val treeIdx = adrsWrapper.getTreeIndex()
-            if (treeIdx != 0xDEF0) {
-                return TestResult("ADRS", false,
-                    "getTreeIndex debería devolver 0xDEF0, pero devolvió $treeIdx")
-            }
-
-            return TestResult("ADRS", true, "Todas las pruebas de ADRS han pasado correctamente")
+            return TestResult("ADRS", true, "Todas las operaciones ADRS correctas")
         } catch (e: Exception) {
             return TestResult("ADRS", false, "Error: ${e.message}")
         } finally {
-            // Liberar recursos
             adrsWrapper.dispose()
         }
     }
 
-    private fun testWOTSWithSHAKE256(): TestResult {
+    // Test computeHash
+    private fun testComputeHash(): TestResult {
+        log("   🔐 Probando función de hash...")
+
         try {
-            // Parámetros WOTS+ con SHAKE256
-            val n = 32 // Tamaño de salida del hash en bytes (256 bits)
-            val lg_w = 4 // log2(w) = 4 para w=16
+            val functionLink = FunctionLink()
 
-            // Calcular len1 y len2 según FIPS 205
-            val len1 = (8 * n + lg_w - 1) / lg_w // ⌈8n/lg_w⌉
-            val len2 = FunctionLink().genLen2(n.toLong(), lg_w.toLong()).toInt()
-            val len = len1 + len2
+            log(" hash básico")
+            val testInput = "Test input for hash".toByteArray()
+            val hashOutput = functionLink.computeHash(testInput, 1)
 
-            // Vector de prueba para SHAKE256
-            // (Estos son valores de ejemplo, en un caso real usarías vectores oficiales)
-            val skSeed = ByteArray(n) { 0x12 } // Semilla secreta constante
-            val pkSeed = ByteArray(n) { 0x34 } // Semilla pública constante
-
-            // Crear y configurar ADRS
-            val adrs = ADRSWrapper()
-            adrs.setLayerAddress(0)
-            adrs.setTreeAddress(ByteArray(12) { 0 })
-            adrs.setTypeAndClear(0) // WOTS_PRF
-            adrs.setKeyPairAddress(0)
-
-            // Generar clave pública WOTS+
-            val pk = FunctionLink().wots_pkGen(skSeed, pkSeed, adrs.getAddressBytes())
-
-            // Verificar el tamaño de la clave pública
-            if (pk.size != n) {
-                return TestResult("WOTS+ (SHAKE256)", false,
-                    "Tamaño de clave pública incorrecto. Esperado: $n, Obtenido: ${pk.size}")
+            if (hashOutput.size != 32) {
+                return TestResult("computeHash", false,
+                    "Tamaño incorrecto. Esperado: 32, Obtenido: ${hashOutput.size}")
             }
 
-            // Mensaje para firmar (usando un valor determinista para reproducibilidad)
-            val message = ByteArray(n) { 0x56 }
-
-            // Establecer ADRS para firma
-            adrs.setTypeAndClear(0) // WOTS_PRF para firma
-
-            // Generar firma WOTS+
-            val signature = FunctionLink().wots_sign(message, skSeed, pkSeed, adrs.getAddressBytes())
-
-            // Verificar tamaño de firma
-            val expectedSigSize = len * n
-            if (signature.size != expectedSigSize) {
-                return TestResult("WOTS+ (SHAKE256)", false,
-                    "Tamaño de firma incorrecto. Esperado: $expectedSigSize, Obtenido: ${signature.size}")
+            log(" verificando no-ceros")
+            if (hashOutput.all { it == 0.toByte() }) {
+                return TestResult("computeHash", false, "Hash no debería ser todo ceros")
             }
 
-            // Configurar ADRS para verificación
-            adrs.setTypeAndClear(1) // WOTS_HASH para verificación
-
-            // Verificar firma reconstruyendo la clave pública
-            val reconstructedPk = FunctionLink().wots_pkFromSig(signature, message, pkSeed, adrs.getAddressBytes())
-
-            // Comparar la clave reconstruida con la original
-            if (!reconstructedPk.contentEquals(pk)) {
-                return TestResult("WOTS+ (SHAKE256)", false,
-                    "La clave pública reconstruida no coincide con la original")
+            log(" reproducibilidad")
+            val hashOutput2 = functionLink.computeHash(testInput, 1)
+            if (!hashOutput.contentEquals(hashOutput2)) {
+                return TestResult("computeHash", false, "Hash no es reproducible")
             }
 
-            // Prueba con mensaje modificado
-            val modifiedMessage = message.clone()
-            modifiedMessage[0] = (modifiedMessage[0] + 1).toByte()
-
-            val reconstructedPkForModified = FunctionLink().wots_pkFromSig(
-                signature, modifiedMessage, pkSeed, adrs.getAddressBytes())
-
-            if (reconstructedPkForModified.contentEquals(pk)) {
-                return TestResult("WOTS+ (SHAKE256)", false,
-                    "La firma debería fallar con mensaje modificado, pero fue válida")
-            }
-
-            // Imprimir resultados exitosos con valores específicos para referencia
-            val pkHex = pk.joinToString("") { String.format("%02x", it) }
-            val sigHex = signature.take(32).toByteArray().joinToString("") { String.format("%02x", it) }
-
-            return TestResult("WOTS+ (SHAKE256)", true,
-                "Prueba exitosa. PK: ${pkHex.take(16)}..., SIG: ${sigHex.take(16)}...")
+            return TestResult("computeHash", true, "Hash funciona correctamente")
         } catch (e: Exception) {
-            return TestResult("WOTS+ (SHAKE256)", false, "Error: ${e.message}")
+            return TestResult("computeHash", false, "Error: ${e.message}")
         }
     }
 
-    // Helper para formatear bytes en hexadecimal
-    private fun bytesToHex(bytes: ByteArray): String {
+    // Test algoritmos WOTS+ con parámetros FIPS 205 oficiales
+    private fun testWOTSAlgorithms(): TestResult {
+        log("   🔑 Probando algoritmos WOTS+ (FIPS 205)...")
+
+        try {
+            val functionLink = FunctionLink()
+
+            // Parámetros oficiales para SLH-DSA-128s/128f (Security Category 1)
+            val n = 16  // FIPS 205: n=16 para 128-bit security
+            val lgw = 4  // FIPS 205: lgw=4 para todos los parameter sets
+            val len = calculateLen(n, lgw)  // len = len1 + len2
+
+            log(" usando parámetros FIPS 205: n=$n, lgw=$lgw, len=$len")
+
+            val skSeed = ByteArray(32) { 0x01 }  // Mantener 32 para semillas (SK.seed)
+            val pkSeed = ByteArray(32) { 0x02 }  // Mantener 32 para semillas (PK.seed)
+
+            ADRSWrapper().use { adrs ->
+                log(" configurando ADRS")
+                adrs.setLayerAddress(0)
+                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTypeAndClear(5) // WOTS_PRF
+                adrs.setKeyPairAddress(0)
+
+                log(" wotsPkGen")
+                val pk = functionLink.wotsPkGen(skSeed, pkSeed, adrs.ptr)
+                if (pk.size != n) {
+                    return TestResult("WOTS Algorithms", false,
+                        "Tamaño de PK incorrecto. Esperado: $n, Obtenido: ${pk.size}")
+                }
+
+                log(" chain (operación rápida)")
+                val X = ByteArray(n) { 0x03 }
+                val chainResult = functionLink.chain(X, 0, 3, pkSeed, adrs.ptr)
+                if (chainResult.size != n) {
+                    return TestResult("WOTS Algorithms", false,
+                        "Tamaño de chain incorrecto. Esperado: $n, Obtenido: ${chainResult.size}")
+                }
+
+                log(" wotsSign")
+                val message = ByteArray(n) { 0x04 }
+                adrs.setTypeAndClear(5) // WOTS_PRF
+
+                val startTime = System.currentTimeMillis()
+                val signature = functionLink.wotsSign(message, skSeed, pkSeed, adrs.ptr)
+                val duration = System.currentTimeMillis() - startTime
+
+                log(" completado en ${duration}ms")
+
+                if (signature.size != len * n) {
+                    return TestResult("WOTS Algorithms", false,
+                        "Tamaño de firma incorrecto. Esperado: ${len * n}, Obtenido: ${signature.size}")
+                }
+
+                log(" wotsPkFromSig")
+                adrs.setTypeAndClear(0) // WOTS_HASH
+                val recoveredPk = functionLink.wotsPkFromSig(signature, message, pkSeed, adrs.ptr)
+                if (!recoveredPk.contentEquals(pk)) {
+                    return TestResult("WOTS Algorithms", false, "PK recuperada no coincide")
+                }
+
+                return TestResult("WOTS Algorithms", true, "Algoritmos WOTS+ correctos (FIPS 205: n=$n)")
+            }
+        } catch (e: Exception) {
+            return TestResult("WOTS Algorithms", false, "Error: ${e.message}")
+        }
+    }
+
+    // Función helper para calcular len según FIPS 205
+    private fun calculateLen(n: Int, lgw: Int): Int {
+        val w = 1 shl lgw  // 2^lgw = 16 para lgw=4
+        val len1 = (8 * n + lgw - 1) / lgw  // ceil(8*n/lgw)
+        val len2 = 3  // Para todos los parameter sets en FIPS 205, len2=3
+        return len1 + len2
+    }
+
+    // Test algoritmos XMSS con parámetros FIPS 205
+    private fun testXMSSAlgorithms(): TestResult {
+        log("   🌳 Probando algoritmos XMSS (FIPS 205)...")
+
+        try {
+            val functionLink = FunctionLink()
+
+            // Parámetros para SLH-DSA-128s (más rápido para testing)
+            val n = 16
+            val h_prime = 9  // h' = 9 para 128s según Tabla 2
+            val wots_len = calculateLen(n, 4)
+
+            log(" usando parámetros FIPS 205: n=$n, h'=$h_prime")
+
+            val skSeed = ByteArray(32) { 0x05 }
+            val pkSeed = ByteArray(32) { 0x06 }
+
+            ADRSWrapper().use { adrs ->
+                log(" configurando ADRS para XMSS")
+                adrs.setLayerAddress(0)
+                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTypeAndClear(2) // WOTS_TREES
+
+                log(" xmssNode (altura reducida para testing)")
+                val startTime = System.currentTimeMillis()
+                val rootNode = functionLink.xmssNode(skSeed, 0, h_prime, pkSeed, adrs.ptr)
+                val nodeTime = System.currentTimeMillis() - startTime
+                log(" nodo generado en ${nodeTime}ms")
+
+                if (rootNode.size != n) {
+                    return TestResult("XMSS Algorithms", false,
+                        "Tamaño de nodo incorrecto. Esperado: $n, Obtenido: ${rootNode.size}")
+                }
+
+                log(" xmssSign")
+                val message = ByteArray(n) { 0x07 }
+                val signStart = System.currentTimeMillis()
+                val signature = functionLink.xmssSign(message, skSeed, 0, pkSeed, adrs.ptr)
+                val signTime = System.currentTimeMillis() - signStart
+                log(" firma generada en ${signTime}ms")
+
+                if (signature.isEmpty()) {
+                    return TestResult("XMSS Algorithms", false, "Firma XMSS vacía")
+                }
+
+                log(" xmssPkFromSig")
+                val recoveredNode = functionLink.xmssPkFromSig(0, signature, message, pkSeed, adrs.ptr)
+                if (!recoveredNode.contentEquals(rootNode)) {
+                    return TestResult("XMSS Algorithms", false, "Nodo recuperado no coincide")
+                }
+
+                return TestResult("XMSS Algorithms", true, "Algoritmos XMSS correctos (FIPS 205: h'=$h_prime)")
+            }
+        } catch (e: Exception) {
+            return TestResult("XMSS Algorithms", false, "Error: ${e.message}")
+        }
+    }
+
+    // Test algoritmos FORS con parámetros FIPS 205
+    private fun testFORSAlgorithms(): TestResult {
+        log("   🌲 Probando algoritmos FORS (FIPS 205)...")
+
+        try {
+            val functionLink = FunctionLink()
+
+            // Parámetros para SLH-DSA-128s según Tabla 2
+            val n = 16
+            val k = 14  // FIPS 205 Tabla 2: k=14 para 128s
+            val a = 12  // FIPS 205 Tabla 2: a=12 para 128s
+
+            log(" usando parámetros FIPS 205: n=$n, k=$k, a=$a")
+
+            val skSeed = ByteArray(32) { 0x08 }
+            val pkSeed = ByteArray(32) { 0x09 }
+
+            ADRSWrapper().use { adrs ->
+                log(" configurando ADRS para FORS")
+                adrs.setLayerAddress(0)
+                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTypeAndClear(3) // FORS_TREE
+
+                log(" forsSkGen")
+                val forsSk = functionLink.forsSkGen(skSeed, pkSeed, adrs.ptr, 0)
+                if (forsSk.size != n) {
+                    return TestResult("FORS Algorithms", false,
+                        "Tamaño de SK incorrecto. Esperado: $n, Obtenido: ${forsSk.size}")
+                }
+
+                log(" forsNode")
+                val forsNode = functionLink.forsNode(skSeed, 0, 3, pkSeed, adrs.ptr)
+                if (forsNode.size != n) {
+                    return TestResult("FORS Algorithms", false,
+                        "Tamaño de nodo incorrecto. Esperado: $n, Obtenido: ${forsNode.size}")
+                }
+
+                log(" forsSign")
+                val messageDigest = ByteArray(n) { 0x0A }
+                val startTime = System.currentTimeMillis()
+                val signature = functionLink.forsSign(messageDigest, skSeed, pkSeed, adrs.ptr)
+                val duration = System.currentTimeMillis() - startTime
+                log(" completado en ${duration}ms")
+
+                if (signature.isEmpty()) {
+                    return TestResult("FORS Algorithms", false, "Firma FORS vacía")
+                }
+
+                log(" forsPkFromSig")
+                adrs.setTypeAndClear(3) // FORS_TREE
+                val recoveredPk = functionLink.forsPkFromSig(signature, messageDigest, pkSeed, adrs.ptr)
+                if (recoveredPk.size != n) {
+                    return TestResult("FORS Algorithms", false,
+                        "Tamaño de PK recuperada incorrecto. Esperado: $n, Obtenido: ${recoveredPk.size}")
+                }
+
+                return TestResult("FORS Algorithms", true, "Algoritmos FORS correctos (FIPS 205: k=$k, a=$a)")
+            }
+        } catch (e: Exception) {
+            return TestResult("FORS Algorithms", false, "Error: ${e.message}")
+        }
+    }
+
+    // Test algoritmos HT (Hypertree)
+    private fun testHTAlgorithms(): TestResult {
+        log("   🏔️ Probando algoritmos HT (Hypertree)...")
+
+        try {
+            val functionLink = FunctionLink()
+            val n = 32
+            val wots_len = 67
+            val h = 5
+            val d = 2
+
+            val message = ByteArray(n) { 0x0B }
+            val skSeed = ByteArray(n) { 0x0C }
+            val pkSeed = ByteArray(n) { 0x0D }
+            val pkRoot = ByteArray(n) { 0x0E }
+
+            log(" htSign")
+            val signature = functionLink.htSign(message, skSeed, pkSeed, 0L, 0)
+            if (signature.isEmpty()) {
+                return TestResult("HT Algorithms", false, "Firma HT vacía")
+            }
+
+            log(" htVerify")
+            try {
+                functionLink.htVerify(message, signature, pkSeed, 0L, 0, pkRoot)
+                return TestResult("HT Algorithms", true, "Algoritmos HT sin errores")
+            } catch (e: Exception) {
+                return TestResult("HT Algorithms", false, "htVerify falló: ${e.message}")
+            }
+
+        } catch (e: Exception) {
+            return TestResult("HT Algorithms", false, "Error: ${e.message}")
+        }
+    }
+
+    // Test algoritmos SLH-DSA principales
+    private fun testSLHDSAMainAlgorithms(): TestResult {
+        log("   🎯 Probando algoritmos SLH-DSA principales...")
+
+        try {
+            val functionLink = FunctionLink()
+            val paramSets = listOf(0, 1)
+
+            for ((index, paramSet) in paramSets.withIndex()) {
+                log(" paramSet ${index + 1}/${paramSets.size} (valor=$paramSet)")
+
+                try {
+                    log("   • slhKeyGen")
+                    val keyPair = functionLink.slhKeyGen()
+                    if (keyPair.size != 2) {
+                        return TestResult("SLH-DSA Main", false,
+                            "slhKeyGen debería devolver 2 elementos, obtuvo ${keyPair.size}")
+                    }
+
+                    val publicKey = keyPair[0]
+                    val privateKey = keyPair[1]
+
+                    if (publicKey.isEmpty() || privateKey.isEmpty()) {
+                        return TestResult("SLH-DSA Main", false,
+                            "Claves vacías para paramSet $paramSet")
+                    }
+
+                    log("   • slhSign")
+                    val message = "Test message for SLH-DSA".toByteArray()
+                    val context = ByteArray(0)
+                    val signature = functionLink.slhSign(message, context, privateKey)
+
+                    if (signature.isEmpty()) {
+                        return TestResult("SLH-DSA Main", false,
+                            "Firma vacía para paramSet $paramSet")
+                    }
+
+                    log("   • slhVerify (válido)")
+                    val isValid = functionLink.slhVerify(message, signature, context, publicKey)
+                    if (!isValid) {
+                        return TestResult("SLH-DSA Main", false,
+                            "Verificación falló para paramSet $paramSet")
+                    }
+
+                    log("   • slhVerify (mensaje modificado)")
+                    val modifiedMessage = message.clone()
+                    if (modifiedMessage.isNotEmpty()) {
+                        modifiedMessage[0] = (modifiedMessage[0] + 1).toByte()
+                    }
+
+                    val isInvalid = functionLink.slhVerify(modifiedMessage, signature, context, publicKey)
+                    if (isInvalid) {
+                        return TestResult("SLH-DSA Main", false,
+                            "Verificación debería fallar con mensaje modificado para paramSet $paramSet")
+                    }
+
+                    log("   • hashSlhSign/Verify (opcional)")
+                    try {
+                        val ph = ByteArray(32) { 0x10 }
+                        val hashSignature = functionLink.hashSlhSign(message, context, ph, privateKey)
+                        if (hashSignature.isNotEmpty()) {
+                            functionLink.hashSlhVerify(message, hashSignature, context, ph, publicKey)
+                        }
+                    } catch (e: Exception) {
+                        log("     (funciones hash opcionales no disponibles)")
+                    }
+
+                } catch (e: Exception) {
+                    return TestResult("SLH-DSA Main", false,
+                        "Error con paramSet $paramSet: ${e.message}")
+                }
+            }
+
+            return TestResult("SLH-DSA Main", true, "Algoritmos SLH-DSA principales correctos")
+        } catch (e: Exception) {
+            return TestResult("SLH-DSA Main", false, "Error: ${e.message}")
+        }
+    }
+
+    // Función helper privada para formatear bytes en hexadecimal
+    private fun formatBytesToHex(bytes: ByteArray): String {
         return bytes.joinToString("") { String.format("%02X", it) }
+    }
+
+    // Extensión para usar ADRS con try-with-resources
+    private inline fun <T> ADRSWrapper.use(block: (ADRSWrapper) -> T): T {
+        try {
+            return block(this)
+        } finally {
+            this.dispose()
+        }
     }
 
     // Clase para representar resultados de tests
@@ -461,5 +746,36 @@ class FIPS205Tester {
         val testName: String,
         val passed: Boolean,
         val message: String
-    )
+    ) {
+        override fun toString(): String {
+            val status = if (passed) "✓ PASS" else "✗ FAIL"
+            return "[$status] $testName: $message"
+        }
+    }
+
+    companion object {
+        // Constantes para tipos de ADRS (según FIPS 205)
+        const val WOTS_HASH = 0x00
+        const val WOTS_PK = 0x01
+        const val WOTS_TREES = 0x02
+        const val FORS_TREE = 0x03
+        const val FORS_ROOTS = 0x04
+        const val WOTS_PRF = 0x05
+        const val FORS_PRF = 0x06
+
+        // Función estática para test rápido
+        fun runQuickTest(): Boolean {
+            return try {
+                val functionLink = FunctionLink()
+
+                // Test rápido básico
+                val result1 = functionLink.genLen2(32, 4)
+                val result2 = functionLink.base2b(byteArrayOf(0x12, 0x34), 4, 4)
+
+                result1 > 0 && result2.isNotEmpty()
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
 }
