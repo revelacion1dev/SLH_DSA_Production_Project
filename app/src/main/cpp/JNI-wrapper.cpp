@@ -475,7 +475,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_computeHash(
         ByteVector input = jbyteArrayToByteVector(env, inputBytes);
         ByteVector output(32); // SHA-256 produce 32 bytes
 
-        bool success = computeShake256(input, output, 32);
+        bool success = computeShake(input, output, 32);
         if (!success) {
             jclass exceptionClass = env->FindClass("java/lang/RuntimeException");
             env->ThrowNew(exceptionClass, "Hash computation failed");

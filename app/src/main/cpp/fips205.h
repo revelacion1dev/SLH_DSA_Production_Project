@@ -260,7 +260,7 @@ uint8_t divmod256(ByteVector& num);
 std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len);
 
 // Funciones de hash para SLH-DSA
-bool computeShake256(const ByteVector& input, ByteVector& output, size_t outputLen);
+bool computeShake(const ByteVector& input, ByteVector& output, size_t outputLen);
 bool concatenateAndHash(const std::vector<ByteVector>& inputs, ByteVector& output, size_t outputLen);
 
 // Funciones primitivas SLH-DSA
