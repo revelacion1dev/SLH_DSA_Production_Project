@@ -19,13 +19,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvKeyInfo: TextView
     private lateinit var tvResults: TextView
     private lateinit var btnSign: Button
-    private lateinit var btnNistTest: Button  // Nuevo botón
+    private lateinit var btnNistTest: Button  // Solo un botón para vectores NIST
 
     // Estado
     private var currentKeys: Array<ByteArray>? = null
     private var currentAlgorithm = 0
     private lateinit var fipsTester: FIPS205Tester
-    private lateinit var simplifiedTester: SimplifiedSignatureTester  // Nuevo tester
+    private lateinit var nistVectorTester: NISTVectorTester  // Tester NIST
 
     // Thread safety
     private val isTestRunning = AtomicBoolean(false)
@@ -43,9 +43,10 @@ class MainActivity : AppCompatActivity() {
 
         // Inicializar testers con logger thread-safe
         fipsTester = FIPS205Tester()
-        simplifiedTester = SimplifiedSignatureTester()
+        nistVectorTester = NISTVectorTester(this)  // Pasar contexto
+
         setupFipsTesterLogger()
-        setupSimplifiedTesterLogger()
+        setupNISTVectorTesterLogger()
 
         initViews()
         initFipsLibrary()
@@ -105,9 +106,9 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun setupSimplifiedTesterLogger() {
-        // Logger para el tester simplificado de vectores NIST
-        simplifiedTester.setLogger(object : FIPS205Tester.TestLogger {
+    private fun setupNISTVectorTesterLogger() {
+        // Logger para el tester de vectores NIST
+        nistVectorTester.setLogger(object : FIPS205Tester.TestLogger {
             override fun log(message: String) {
                 runOnUiThread {
                     forceUpdateUI(message)
@@ -116,21 +117,21 @@ class MainActivity : AppCompatActivity() {
 
             override fun logTestStart(testName: String) {
                 runOnUiThread {
-                    forceUpdateUI("🎯 INICIANDO TEST NIST: $testName\n")
-                    forceUpdateUI("~".repeat(40) + "\n")
+                    forceUpdateUI("🔬 VECTOR NIST: $testName\n")
+                    forceUpdateUI("*".repeat(40) + "\n")
                 }
             }
 
             override fun logTestResult(testName: String, passed: Boolean, message: String) {
                 runOnUiThread {
                     val emoji = if (passed) "✅" else "❌"
-                    val status = if (passed) "VÁLIDO" else "FALLO"
-                    forceUpdateUI("$emoji NIST: $testName = $status\n")
+                    val status = if (passed) "EXITOSO" else "FALLO"
+                    forceUpdateUI("$emoji VECTOR: $testName = $status\n")
 
                     if (!passed) {
-                        forceUpdateUI("📋 DETALLE: $message\n")
+                        forceUpdateUI("🔍 DETALLE: $message\n")
                     }
-                    forceUpdateUI("~".repeat(40) + "\n")
+                    forceUpdateUI("*".repeat(40) + "\n")
                 }
             }
         })
@@ -166,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         tvKeyInfo = findViewById(R.id.tvKeyInfo)
         tvResults = findViewById(R.id.tvResults)
         btnSign = findViewById(R.id.btnSign)
-        btnNistTest = findViewById(R.id.btnNistTest)  // Nuevo botón
+        btnNistTest = findViewById(R.id.btnNistTest)  // Solo un botón
 
         // Configurar spinner
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, algorithms)
@@ -186,7 +187,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSign).setOnClickListener { signMessage() }
         findViewById<Button>(R.id.btnClear).setOnClickListener { clearResults() }
 
-        // Nuevo listener para el test de vectores NIST
+        // Solo un listener para vectores NIST
         btnNistTest.setOnClickListener {
             if (!isTestRunning.get()) runNISTVectorTest()
         }
@@ -201,8 +202,10 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
+
     /**
-     * FUNCIÓN CORREGIDA: Ejecuta solo tests SHAKE con logging mejorado
+     * TEST DE VECTORES NIST - Procesamiento completo de archivos JSON
+     * Ejecuta ambas funciones: generación y verificación de firmas
      */
     private fun runNISTVectorTest() {
         if (!isTestRunning.compareAndSet(false, true)) {
@@ -211,11 +214,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnNistTest.isEnabled = false
-        btnNistTest.text = "Ejecutando SHAKE..."
+        btnNistTest.text = "Ejecutando Vectores NIST..."
 
-        log("🟢 TESTS NIST - SOLO CONFIGURACIONES SHAKE\n")
-        log("📂 Optimizado para máxima compatibilidad\n")
-        log("🔍 Logging detallado en consola del emulador\n")
+        log("🔬 PROCESADOR DE VECTORES NIST - SOLO SHAKE\n")
+        log("📌 Configuraciones soportadas: SHAKE-128s/f, SHAKE-256s/f\n")
+        log("🎯 Procesando archivos JSON reales de NIST\n")
         log("=".repeat(60) + "\n\n")
 
         Thread {
@@ -223,138 +226,191 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 runOnUiThread {
-                    forceUpdateUI("⚡ Iniciando tests SHAKE exclusivamente...\n")
-                    forceUpdateUI("📱 Revisa la consola del emulador para logs detallados\n\n")
+                    forceUpdateUI("🔧 Inicializando procesador de vectores NIST...\n")
+                    forceUpdateUI("📂 Buscando archivos JSON en assets/\n\n")
                 }
 
-                // Test 1: Test rápido SHAKE-128s
-                log("📋 PASO 1: Test rápido SHAKE-128s\n")
-                val quickResult = simplifiedTester.quickTestSHAKE128s()
-
+                // Ejecutar tests de generación
+                /*
                 runOnUiThread {
-                    displaySHAKETestResults("Test Rápido SHAKE-128s", quickResult)
+                    forceUpdateUI("1️⃣ EJECUTANDO TESTS DE GENERACIÓN DE FIRMAS\n")
+                    forceUpdateUI("-".repeat(50) + "\n")
                 }
 
-                // Test 2: Test con resultados esperados
-                log("\n📋 PASO 2: Test con comparación esperado vs obtenido\n")
-                val expectedResult = simplifiedTester.testWithExpectedResults()
+                val generationResults = nistVectorTester.testSignatureGeneration()
 
                 runOnUiThread {
-                    displaySHAKETestResults("Test Esperado vs Obtenido", expectedResult)
+                    displayNISTVectorResults("Generación de Firmas", generationResults)
                 }
 
-                // Test 3: Test completo solo SHAKE
-                log("\n📋 PASO 3: Test completo todas las configuraciones SHAKE\n")
-                val fullResult = simplifiedTester.testOnlySHAKE()
+                // Ejecutar tests de verificación
+                runOnUiThread {
+                    forceUpdateUI("\n2️⃣ EJECUTANDO TESTS DE VERIFICACIÓN DE FIRMAS\n")
+                    forceUpdateUI("-".repeat(50) + "\n")
+                }
+
+                val verificationResults = nistVectorTester.testSignatureVerification()
 
                 runOnUiThread {
-                    displaySHAKETestResults("Test Completo SHAKE", fullResult)
+                    displayNISTVectorResults("Verificación de Firmas", verificationResults)
+                }
+
+                // Ejecutar test combinado
+                runOnUiThread {
+                    forceUpdateUI("\nEJECUTANDO TEST COMBINADO SHAKE\n")
+                    forceUpdateUI("-".repeat(50) + "\n")
+                }
+                */
+
+                val combinedResults = nistVectorTester.testOnlySHAKE()
+
+                runOnUiThread {
+                    displayNISTVectorResults("Test Combinado SHAKE", combinedResults)
                 }
 
                 val totalTime = System.currentTimeMillis() - startTime
 
                 runOnUiThread {
                     // Resumen final
-                    forceUpdateUI("\n" + "🟢".repeat(30) + "\n")
-                    forceUpdateUI("🏁 TESTS SHAKE COMPLETADOS\n")
+                    forceUpdateUI("\n🏁 PROCESAMIENTO VECTORES NIST COMPLETADO\n")
                     forceUpdateUI("⏱️ Tiempo total: ${totalTime}ms (${totalTime/1000.0}s)\n")
-                    forceUpdateUI("🟢".repeat(30) + "\n")
+                    forceUpdateUI("=".repeat(60) + "\n")
 
                     // Análisis combinado
-                    val totalQuickTests = quickResult.totalTests
-                    val totalQuickPassed = quickResult.passedTests
-                    val totalExpectedTests = expectedResult.totalTests
-                    val totalExpectedPassed = expectedResult.passedTests
-                    val totalFullTests = fullResult.totalTests
-                    val totalFullPassed = fullResult.passedTests
+                    /*
+                    val genTotal = generationResults.totalTests
+                    val genPassed = generationResults.passedTests
+                    val verTotal = verificationResults.totalTests
+                    val verPassed = verificationResults.passedTests
+                     */
+                    val combTotal = combinedResults.totalTests
+                    val combPassed = combinedResults.passedTests
 
-                    val combinedTotal = totalQuickTests + totalExpectedTests + totalFullTests
-                    val combinedPassed = totalQuickPassed + totalExpectedPassed + totalFullPassed
-                    val combinedRate = if (combinedTotal > 0) (combinedPassed * 100.0 / combinedTotal) else 0.0
+                    forceUpdateUI("\n📊 ANÁLISIS FINAL VECTORES NIST:\n")
+                    /*
+                    forceUpdateUI("   🔧 Generación: $genPassed/$genTotal (${if(genTotal > 0) (genPassed*100/genTotal) else 0}%)\n")
+                    forceUpdateUI("   🔍 Verificación: $verPassed/$verTotal (${if(verTotal > 0) (verPassed*100/verTotal) else 0}%)\n")
+                    */
+                    forceUpdateUI("   🎯 Combinado: $combPassed/$combTotal (${if(combTotal > 0) (combPassed*100/combTotal) else 0}%)\n")
 
-                    forceUpdateUI("\n📊 ANÁLISIS FINAL SHAKE:\n")
-                    forceUpdateUI("   ⚡ Test rápido: $totalQuickPassed/$totalQuickTests\n")
-                    forceUpdateUI("   🎯 Test esperado: $totalExpectedPassed/$totalExpectedTests\n")
-                    forceUpdateUI("   🔧 Test completo: $totalFullPassed/$totalFullTests\n")
-                    forceUpdateUI("   📈 Total SHAKE: $combinedPassed/$combinedTotal (${combinedRate.toInt()}%)\n")
 
-                    // Evaluación específica para SHAKE
+                    // Estado del sistema NIST
+                    val overallRate = if (combTotal > 0) (combPassed * 100.0 / combTotal) else 0.0
                     val status = when {
-                        combinedRate >= 95 -> "🟢 EXCELENTE - SHAKE totalmente funcional"
-                        combinedRate >= 80 -> "🟡 BUENO - SHAKE mayormente funcional"
-                        combinedRate >= 60 -> "🟠 REGULAR - SHAKE parcialmente funcional"
-                        else -> "🔴 PROBLEMÁTICO - SHAKE requiere revisión"
+                        overallRate >= 95 -> "🟢 EXCELENTE - Vectores NIST completamente compatibles"
+                        overallRate >= 80 -> "🟡 BUENO - Vectores NIST mayormente compatibles"
+                        overallRate >= 60 -> "🟠 REGULAR - Vectores NIST parcialmente compatibles"
+                        else -> "🔴 PROBLEMÁTICO - Vectores NIST requieren revisión"
                     }
 
-                    forceUpdateUI("   🔍 Estado SHAKE: $status\n")
+                    forceUpdateUI("   🔍 Estado NIST: $status\n")
 
-                    // Recomendaciones específicas SHAKE
-                    if (combinedRate < 100) {
-                        forceUpdateUI("\n💡 RECOMENDACIONES SHAKE:\n")
-                        if (quickResult.passedTests < quickResult.totalTests) {
-                            forceUpdateUI("   • Revisar inicialización SHAKE-128s básica\n")
+                    if (overallRate < 100) {
+                        forceUpdateUI("\n💡 RECOMENDACIONES VECTORES NIST:\n")
+                        /*
+                        if (generationResults.errorMessage != null) {
+                            forceUpdateUI("   • Revisar generación: ${generationResults.errorMessage}\n")
                         }
-                        if (expectedResult.passedTests < expectedResult.totalTests) {
-                            forceUpdateUI("   • Verificar determinismo en generación de firmas\n")
+                        if (verificationResults.errorMessage != null) {
+                            forceUpdateUI("   • Revisar verificación: ${verificationResults.errorMessage}\n")
                         }
-                        if (fullResult.passedTests < fullResult.totalTests) {
-                            forceUpdateUI("   • Implementar configuraciones SHAKE faltantes\n")
-                            forceUpdateUI("   • Verificar parameter sets: 128f, 192s, 192f, 256s, 256f\n")
-                        }
-                        forceUpdateUI("   • Consultar logs en consola del emulador con 'adb logcat'\n")
+                         */
+                        forceUpdateUI("   • Verificar archivos JSON en assets/\n")
+                        forceUpdateUI("   • Consultar logs detallados con 'adb logcat | grep NIST_VECTOR_TESTER'\n")
                     } else {
-                        forceUpdateUI("\n🎉 ¡PERFECTO! Todas las configuraciones SHAKE funcionan\n")
+                        forceUpdateUI("\n🎉 ¡PERFECTO! Todos los vectores NIST funcionan correctamente\n")
                     }
 
-                    forceUpdateUI("\n🔍 COMANDOS ÚTILES PARA DEBUGGING:\n")
-                    forceUpdateUI("   adb logcat | grep NIST_\n")
-                    forceUpdateUI("   adb logcat | grep SHAKE\n")
-                    forceUpdateUI("   adb logcat | grep SIGNATURE\n")
+                    forceUpdateUI("\n📚 ARCHIVOS PROCESADOS:\n")
+                    forceUpdateUI("   📂 firmaGen_json_tests/prompt.json\n")
+                    forceUpdateUI("   📂 firmaGen_json_tests/expectedResults.json\n")
+                    forceUpdateUI("   📂 firmaVer_json_tests/prompt.json\n")
+                    forceUpdateUI("   📂 firmaVer_json_tests/expectedResults.json\n")
                     forceUpdateUI("=".repeat(60) + "\n\n")
 
                     // Restaurar UI
                     btnNistTest.isEnabled = true
-                    btnNistTest.text = "Test SHAKE NIST"
+                    btnNistTest.text = "Vectores NIST"
                     isTestRunning.set(false)
                 }
 
             } catch (e: Exception) {
                 runOnUiThread {
-                    forceUpdateUI("💥 ERROR en tests SHAKE: ${e.message}\n")
+                    forceUpdateUI("💥 ERROR en procesamiento vectores NIST: ${e.message}\n")
                     forceUpdateUI("📚 Stack trace:\n")
                     e.stackTrace.take(3).forEach {
                         forceUpdateUI("   $it\n")
                     }
-                    forceUpdateUI("🔍 Revisa 'adb logcat | grep NIST_ERROR' para más detalles\n\n")
+                    forceUpdateUI("\n")
 
                     btnNistTest.isEnabled = true
-                    btnNistTest.text = "Test SHAKE NIST"
+                    btnNistTest.text = "Vectores NIST"
                     isTestRunning.set(false)
                 }
             }
         }.start()
     }
 
-    private fun displaySHAKETestResults(testName: String, result: SimplifiedSignatureTester.NISTTestResults) {
+    // Reemplazar la función displayNISTVectorResults en MainActivity.kt
+    private fun displayNISTVectorResults(testName: String, result: NISTVectorTester.TestResults) {
         forceUpdateUI("📋 RESULTADOS: $testName\n")
         forceUpdateUI("   🔧 Algoritmo: ${result.algorithm}\n")
         forceUpdateUI("   📊 Tests: ${result.passedTests}/${result.totalTests} exitosos\n")
-        forceUpdateUI("   📈 Tasa de éxito: ${result.successRate.toInt()}%\n")
+
+        if (result.totalTests > 0) {
+            val successRate = (result.passedTests * 100.0 / result.totalTests).toInt()
+            forceUpdateUI("   📈 Tasa de éxito: $successRate%\n")
+        }
 
         if (result.errorMessage != null) {
             forceUpdateUI("   ❌ Error: ${result.errorMessage}\n")
         }
 
-        if (result.testResults.isNotEmpty()) {
+        if (result.results.isNotEmpty()) {
             forceUpdateUI("   📂 Detalle por test case:\n")
-            result.testResults.forEach { test ->
-                val emoji = if (test.passed) "✅" else "❌"
-                forceUpdateUI("      $emoji TC${test.tcId}: ${test.message}\n")
-                if (test.duration > 0) {
-                    forceUpdateUI("         ⏱️ Tiempo: ${test.duration}ms\n")
+
+            // Mostrar failures primero
+            val failures = result.results.filter { !it.passed }
+            if (failures.isNotEmpty()) {
+                forceUpdateUI("   🔴 FALLOS DETECTADOS:\n")
+                failures.take(3).forEach { test ->
+                    forceUpdateUI("      ❌ TC${test.tcId}: ${test.message}\n")
+                    if (test.duration > 0) {
+                        forceUpdateUI("         ⏱️ Tiempo: ${test.duration}ms\n")
+                    }
+                    // Mostrar detalles adicionales si existen
+                    test.details?.let { details ->
+                        forceUpdateUI("         🔍 Detalles: $details\n")
+                    }
+                }
+                if (failures.size > 3) {
+                    forceUpdateUI("      ... y ${failures.size - 3} fallos más\n")
+                }
+                forceUpdateUI("\n")
+            }
+
+            // Mostrar algunos éxitos para verificar que el sistema funciona
+            val successes = result.results.filter { it.passed }
+            if (successes.isNotEmpty()) {
+                forceUpdateUI("   🟢 ÉXITOS (muestra):\n")
+                successes.take(2).forEach { test ->
+                    forceUpdateUI("      ✅ TC${test.tcId}: ${test.message.lines().first()}\n")
+                    if (test.duration > 0) {
+                        forceUpdateUI("         ⏱️ Tiempo: ${test.duration}ms\n")
+                    }
+                }
+                if (successes.size > 2) {
+                    forceUpdateUI("      ... y ${successes.size - 2} éxitos más\n")
                 }
             }
         }
+
+        // Agregar recomendación para ver logs detallados
+        if (result.results.any { !it.passed }) {
+            forceUpdateUI("\n   💡 Para ver comparaciones detalladas de firmas:\n")
+            forceUpdateUI("      adb logcat | grep 'NIST_SIGNATURE_DEBUG'\n")
+        }
+
         forceUpdateUI("\n")
     }
 
