@@ -101,8 +101,8 @@ const SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] 
         {"SLH-DSA-SHAKE-192s",  24, 63,  7,  9, 14, 17, 4, 39, 3, 48, 16224,  true },
         {"SLH-DSA-SHA2-192f",   24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  false},
         {"SLH-DSA-SHAKE-192f",  24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  true },
-        {"SLH-DSA-SHA2-256s",   32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  false},
 
+        {"SLH-DSA-SHA2-256s",   32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  false},
         {"SLH-DSA-SHAKE-256s",  32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  true },
         {"SLH-DSA-SHA2-256f",   32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  false},
         {"SLH-DSA-SHAKE-256f",  32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  true }
@@ -853,7 +853,7 @@ ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
 
 // Algorithm 12: ht_sign
 ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed,
-                   uint32_t idx_tree, uint32_t idx_leaf) {
+                   uint64_t idx_tree, uint32_t idx_leaf) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -889,7 +889,7 @@ ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVect
 
 // Algorithm 13: ht_verify
 bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed,
-               uint32_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot) {
+               uint64_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -1138,10 +1138,12 @@ std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
     return std::make_pair(privateKey, publicKey);
 }
 
-// Algorithm 19: slh_sign_internal
+// Algorithm 19: slh_sign_internal - CORREGIDO
 SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
                                     const SLH_DSA_PrivateKey& privateKey,
                                     const ByteVector& addrnd) {
+
+    // Obtener los parametros definidos en params
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -1155,6 +1157,7 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     const uint32_t h_prima = params->h_prima;
 
     ADRS adrs;
+    // Si se proporciona addrnd, se usa como semilla aleatoria; de lo contrario, se usa pkSeed siendo determinista
     ByteVector opt_rand = addrnd.empty() ? privateKey.pkSeed : addrnd;
 
     ByteVector R;
@@ -1167,32 +1170,76 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
         throw std::runtime_error("Error in H_msg");
     }
 
+    // 𝑚𝑑 ← 𝑑𝑖𝑔𝑒𝑠𝑡 [0 ∶ ⌈𝑘⋅𝑎/8 ⌉]
     const size_t md_bits = k * a;
-    const size_t md_bytes = (md_bits + 7) / 8;
+    const size_t md_bytes = (md_bits + 7) / 8;  // El +7 es para hacer el redondeo haia arriba
+
+    // �𝑚𝑝_𝑖𝑑𝑥𝑡𝑟𝑒𝑒 ← 𝑑𝑖𝑔𝑒𝑠𝑡 [⌈𝑘⋅𝑎/8 ⌉ ∶ ⌈𝑘⋅𝑎/8 ⌉+⌈(ℎ−ℎ/𝑑)/8 ⌉]
+    const size_t tree_idx_bits = h - (h / d);                       // 64 - 8 = 56 bits
+    const size_t leaf_idx_bits = h / d;                             // 64/8 = 8 bits (NO h_prima/d)
+    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;          // 7 bytes
+    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;          // 1 byte
+
+    const size_t required_bytes = md_bytes + tree_idx_bytes + leaf_idx_bytes;
+
+    if (digest.size() < required_bytes) {
+        throw std::runtime_error("Digest insuficiente: necesarios " +
+                                 std::to_string(required_bytes) + " bytes, disponibles " +
+                                 std::to_string(digest.size()));
+    }
+    // 𝑚𝑑 ← 𝑑𝑖𝑔𝑒𝑠𝑡 [0 ∶ ⌈𝑘⋅𝑎/8 ⌉]
     ByteVector md(digest.begin(), digest.begin() + md_bytes);
 
     const size_t tree_idx_start = md_bytes;
-    const size_t tree_idx_bits = h - h_prima / d;
-    const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;
     ByteVector tmp_idx_tree(digest.begin() + tree_idx_start,
                             digest.begin() + tree_idx_start + tree_idx_bytes);
 
     const size_t leaf_idx_start = tree_idx_start + tree_idx_bytes;
-    const size_t leaf_idx_bits = h_prima / d;
-    const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    uint32_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
-    uint32_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+    // CORRECCIÓN: Usar uint64_t para idx_tree (56 bits no cabe en uint32_t)
+    uint64_t idx_tree_64 = 0;
+    for (size_t i = 0; i < tmp_idx_tree.size() && i < 8; i++) {
+        idx_tree_64 = (idx_tree_64 << 8) | static_cast<uint64_t>(tmp_idx_tree[i]);
+    }
+    idx_tree_64 &= ((1ULL << tree_idx_bits) - 1);
 
-    adrs.setTreeAddress(reinterpret_cast<const uint8_t*>(&idx_tree));
+    uint32_t idx_leaf = 0;
+    for (size_t i = 0; i < tmp_idx_leaf.size() && i < 4; i++) {
+        idx_leaf = (idx_leaf << 8) | static_cast<uint32_t>(tmp_idx_leaf[i]);
+    }
+    idx_leaf &= ((1ULL << leaf_idx_bits) - 1);
+
+    // CORRECCIÓN: Convertir idx_tree_64 a array de bytes para setTreeAddress
+    // Crear array de 12 bytes (tamaño esperado por setTreeAddress) en big-endian
+    uint8_t tree_addr_bytes[12] = {0};
+
+    // Colocar idx_tree_64 en los últimos 8 bytes del array (big-endian)
+    for (int i = 7; i >= 0; i--) {
+        tree_addr_bytes[4 + i] = static_cast<uint8_t>(idx_tree_64 & 0xFF);
+        idx_tree_64 >>= 8;
+    }
+
+    adrs.setTreeAddress(tree_addr_bytes);
     adrs.setTypeAndClear(FORS_TREE);
     adrs.setKeyPairAddress(idx_leaf);
     ByteVector SIG_FORS = fors_sign(md, privateKey.seed, privateKey.pkSeed, adrs);
 
     ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, privateKey.pkSeed, adrs);
-    ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree, idx_leaf);
+
+    // CORRECCIÓN: Restaurar idx_tree_64 para ht_sign
+    idx_tree_64 = 0;
+    for (size_t i = 0; i < tmp_idx_tree.size() && i < 8; i++) {
+        idx_tree_64 = (idx_tree_64 << 8) | static_cast<uint64_t>(tmp_idx_tree[i]);
+    }
+    idx_tree_64 &= ((1ULL << tree_idx_bits) - 1);
+
+    // Para ht_sign, si acepta uint32_t, usar solo los bits bajos necesarios
+    // Si acepta uint64_t, pasar idx_tree_64 directamente
+    uint32_t idx_tree_for_ht = static_cast<uint32_t>(idx_tree_64 & 0xFFFFFFFF);
+
+    ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree_for_ht, idx_leaf);
 
     SLH_DSA_Signature signature;
     signature.randomness = R;
@@ -1201,7 +1248,6 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
 
     return signature;
 }
-
 // Algorithm 20: slh_verify_internal
 bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();

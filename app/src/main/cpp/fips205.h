@@ -294,8 +294,8 @@ ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx
 ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS, const ByteVector& M, const ByteVector& PKseed, ADRS adrs);
 
 // Algoritmos HT (Hypertree)
-ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, uint32_t idx_tree, uint32_t idx_leaf);
-bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed, uint32_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot);
+ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf);
+bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot);
 
 // Algoritmos FORS
 ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs, uint32_t idx);
