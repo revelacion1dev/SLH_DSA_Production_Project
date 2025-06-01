@@ -364,7 +364,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setLayerAddress(
 
 // Nueva función más directa
 extern "C" JNIEXPORT void JNICALL
-Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeAddressLong(
+Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeAddress(
         JNIEnv* env, jobject, jlong adrsPtr, jlong treeIndex) {
     try {
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
@@ -774,8 +774,10 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhKeyGen(
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_slhSign(
-        JNIEnv* env, jobject /* this */, jbyteArray MBytes,
-        jbyteArray ctxBytes, jbyteArray SKBytes) {  // ¡Sin paramSet!
+        JNIEnv* env, jobject /* this */,
+        jbyteArray MBytes,
+        jbyteArray ctxBytes,
+        jbyteArray SKBytes) {  // ¡Sin paramSet!
     try {
         ByteVector M = jbyteArrayToByteVector(env, MBytes);
         ByteVector ctx = jbyteArrayToByteVector(env, ctxBytes);

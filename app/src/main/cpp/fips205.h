@@ -15,7 +15,7 @@ using ByteVector = std::vector<uint8_t>;
 // Definición de tipos para ADRS
 constexpr uint32_t WOTS_HASH = 0x00;
 constexpr uint32_t WOTS_PK = 0x01;
-constexpr uint32_t WOTS_TREES = 0x02;
+constexpr uint32_t TREE = 0x02;
 constexpr uint32_t FORS_TREE = 0x03;
 constexpr uint32_t FORS_ROOTS = 0x04;
 constexpr uint32_t WOTS_PRF = 0x05;
@@ -283,25 +283,25 @@ bool T_l(const ByteVector& PKseed, const ByteVector& ADRS, std::vector<ByteVecto
          ByteVector& output);
 
 // Algoritmos WOTS+
-ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS adrs);
-ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs);
+ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS& adrs);
+ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs);
 ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs);
-ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS adrs);
+ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs);
 
 // Algoritmos XMSS
-ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS adrs);
-ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx, const ByteVector& PKseed, ADRS adrs);
-ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS, const ByteVector& M, const ByteVector& PKseed, ADRS adrs);
+ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs);
+ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx, const ByteVector& PKseed, ADRS& adrs);
+ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs);
 
 // Algoritmos HT (Hypertree)
 ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf);
 bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot);
 
 // Algoritmos FORS
-ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs, uint32_t idx);
-ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS adrs);
-ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs);
-ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md, const ByteVector& PKseed, ADRS adrs);
+ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs, uint32_t idx);
+ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs);
+ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs);
+ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md, const ByteVector& PKseed, ADRS& adrs);
 
 // Algoritmos SLH-DSA principales
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed);
@@ -309,7 +309,8 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M, const SLH_DSA_PrivateKe
 bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK);
 
 // API pública
-std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen();
+std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen();                                                                              // Genera una clave pública y privada de SLH-DSA
+//std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen(const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed); //Adopta la clave pública y privada de SLH-DSA a partir de semillas
 ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_PrivateKey& SK);
 bool slh_verify(const ByteVector& M, const ByteVector& SIG, const ByteVector& ctx, const SLH_DSA_PublicKey& PK);
 

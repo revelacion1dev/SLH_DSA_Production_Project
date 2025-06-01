@@ -44,7 +44,7 @@ class FIPS205Tester {
             FunctionLink().setLayerAddress(adrsPtr, layer)
         }
 
-        fun setTreeAddress(tree: ByteArray) {
+        fun setTreeAddress(tree: Long) {
             FunctionLink().setTreeAddress(adrsPtr, tree)
         }
 
@@ -361,8 +361,7 @@ class FIPS205Tester {
             }
 
             log(" setTreeAddress")
-            val treeBytes = ByteArray(12) { (it % 256).toByte() }
-            adrsWrapper.setTreeAddress(treeBytes)
+            adrsWrapper.setTreeAddress(0x9ABCDEF0L)
 
             log(" setTypeAndClear")
             adrsWrapper.setTypeAndClear(0) // WOTS_HASH
@@ -436,7 +435,7 @@ class FIPS205Tester {
             ADRSWrapper().use { adrs ->
                 log(" configurando ADRS")
                 adrs.setLayerAddress(0)
-                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTreeAddress(0)
                 adrs.setTypeAndClear(5) // WOTS_PRF
                 adrs.setKeyPairAddress(0)
 
@@ -512,7 +511,7 @@ class FIPS205Tester {
             ADRSWrapper().use { adrs ->
                 log(" configurando ADRS para XMSS")
                 adrs.setLayerAddress(0)
-                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTreeAddress(0)
                 adrs.setTypeAndClear(2) // WOTS_TREES
 
                 log(" xmssNode (altura reducida para testing)")
@@ -570,7 +569,7 @@ class FIPS205Tester {
             ADRSWrapper().use { adrs ->
                 log(" configurando ADRS para FORS")
                 adrs.setLayerAddress(0)
-                adrs.setTreeAddress(ByteArray(12) { 0 })
+                adrs.setTreeAddress(0)
                 adrs.setTypeAndClear(3) // FORS_TREE
 
                 log(" forsSkGen")

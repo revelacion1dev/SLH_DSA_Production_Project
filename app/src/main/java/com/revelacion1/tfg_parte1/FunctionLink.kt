@@ -44,7 +44,7 @@ class FunctionLink {
     external fun disposeADRS(adrsPtr: Long)
     external fun getAddressBytes(adrsPtr: Long): ByteArray
     external fun setLayerAddress(adrsPtr: Long, layer: Int)
-    external fun setTreeAddress(adrsPtr: Long, tree: ByteArray)
+    external fun setTreeAddress(adrsPtr: Long, treeIndex : Long)
     external fun setTypeAndClear(adrsPtr: Long, type: Int)
     external fun setKeyPairAddress(adrsPtr: Long, keyPair: Int)
     external fun setChainAddress(adrsPtr: Long, chain: Int)

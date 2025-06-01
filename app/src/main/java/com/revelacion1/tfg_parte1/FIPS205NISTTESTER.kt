@@ -383,6 +383,8 @@ class NISTVectorTester(private val context: android.content.Context) {
         return when (parameterSet) {
             "SLH-DSA-SHAKE-128s" -> 1
             "SLH-DSA-SHAKE-128f" -> 3
+            "SLH-DSA-SHAKE-192s" -> 5
+            "SLH-DSA-SHAKE-192f" -> 7
             "SLH-DSA-SHAKE-256s" -> 9
             "SLH-DSA-SHAKE-256f" -> 11
             else -> {
