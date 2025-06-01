@@ -26,11 +26,22 @@ jbyteArray byteVectorToJbyteArray(JNIEnv* env, const ByteVector& vec) {
     return result;
 }
 
-void handleCppException(JNIEnv* env) {
+//Esta recibe el mensaje
+void handleCppException(JNIEnv* env, std::exception_ptr e) {
     jclass exceptionClass = env->FindClass("java/lang/RuntimeException");
-    env->ThrowNew(exceptionClass, "Native C++ exception occurred");
-}
 
+    try {
+        if (e) {
+            std::rethrow_exception(e);  // Relanza la excepción para capturarla
+        }
+    } catch (const std::exception& ex) {
+        env->ThrowNew(exceptionClass, ex.what());  // Usa el mensaje de la excepción
+        return;
+    } catch (...) {
+        env->ThrowNew(exceptionClass, "Unknown C++ exception");  // Para excepciones no estándar
+        return;
+    }
+}
 
 // Configuration Manager Functions
 
@@ -42,9 +53,9 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_initializeConfig(
         auto scheme = static_cast<SLH_DSA_ParamSet>(defaultScheme);
         FIPS205ConfigManager::initialize(scheme);
         return JNI_TRUE;
-    } catch (...) {
-        handleCppException(env);
-        return JNI_FALSE;
+
+    } catch(...) {
+        handleCppException(env, std::current_exception());
     }
 }
 
@@ -55,9 +66,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setParameterScheme(
         SLH_DSA_ParamSet paramSet = static_cast<SLH_DSA_ParamSet>(scheme);
         bool success = FIPS205ConfigManager::setSchema(paramSet);
         return static_cast<jboolean>(success);
-    } catch (...) {
-        handleCppException(env);
-        return JNI_FALSE;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 extern "C" JNIEXPORT jintArray JNICALL
@@ -84,9 +94,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getCurrentParameters(
 
         env->SetIntArrayRegion(result, 0, 9, values);
         return result;
-    } catch (...) {
-        handleCppException(env);
-        return nullptr;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -99,9 +108,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getCurrentSchemaName(
             return env->NewStringUTF("Unknown");
         }
         return env->NewStringUTF(params->name);
-    } catch (...) {
-        handleCppException(env);
-        return nullptr;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -110,9 +118,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_isUsingCustomParameters(
         JNIEnv* env, jobject /* this */) {
     try {
         return static_cast<jboolean>(FIPS205ConfigManager::isUsingCustomParams());
-    } catch (...) {
-        handleCppException(env);
-        return JNI_FALSE;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -131,9 +138,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setCustomParameters(
                 static_cast<uint32_t>(lg_w)
         );
         return static_cast<jboolean>(success);
-    } catch (...) {
-        handleCppException(env);
-        return JNI_FALSE;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -143,9 +149,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_resetToStandard(
     try {
         SLH_DSA_ParamSet paramSet = static_cast<SLH_DSA_ParamSet>(scheme);
         return static_cast<jboolean>(FIPS205ConfigManager::resetToStandard(paramSet));
-    } catch (...) {
-        handleCppException(env);
-        return JNI_FALSE;
+    } catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -158,8 +163,8 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_printCurrentConfig(
             printf("FIPS205 Config: %s (n=%d, h=%d, d=%d)\n",
                    params->name, params->n, params->h, params->d);
         }
-    } catch (...) {
-        handleCppException(env);
+    }catch(...) {
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -197,7 +202,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_calculateDerivedParams(
         env->SetIntArrayRegion(result, 0, 8, values);
         return result;
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -234,7 +239,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getAllSchemaParameters(
         env->SetIntArrayRegion(result, 0, 12, values);
         return result;
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -252,7 +257,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_genLen2(
         uint32_t result = gen_len2(static_cast<uint32_t>(n), static_cast<uint32_t>(lg_w));
         return static_cast<jlong>(result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return 0;
     }
 }
@@ -265,7 +270,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_toInt(
         uint32_t result = toInt(x, static_cast<uint64_t>(n));
         return static_cast<jlong>(result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return 0;
     }
 }
@@ -282,7 +287,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_toByte(
         ByteVector result = toByte(input, static_cast<uint64_t>(n));
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -301,7 +306,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_base2b(
         }
         return outputArray;
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -317,7 +322,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_createADRS(
         ADRS* adrs = new ADRS();
         return reinterpret_cast<jlong>(adrs);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return 0;
     }
 }
@@ -329,7 +334,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_disposeADRS(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         delete adrs;
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -341,7 +346,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getAddressBytes(
         ByteVector result = adrs->toVector();
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -353,24 +358,19 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setLayerAddress(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setLayerAddress(static_cast<uint32_t>(layer));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
+// Nueva función más directa
 extern "C" JNIEXPORT void JNICALL
-Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeAddress(
-        JNIEnv* env, jobject /* this */, jlong adrsPtr, jbyteArray treeBytes) {
+Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeAddressLong(
+        JNIEnv* env, jobject, jlong adrsPtr, jlong treeIndex) {
     try {
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
-        ByteVector tree = jbyteArrayToByteVector(env, treeBytes);
-
-        uint8_t treeArray[12] = {0};
-        size_t copySize = std::min(tree.size(), static_cast<size_t>(12));
-        std::copy(tree.begin(), tree.begin() + copySize, treeArray);
-
-        adrs->setTreeAddress(treeArray);
+        adrs->setTreeAddress(static_cast<uint64_t>(treeIndex));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -381,7 +381,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTypeAndClear(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setTypeAndClear(static_cast<uint32_t>(type));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -392,7 +392,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setKeyPairAddress(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setKeyPairAddress(static_cast<uint32_t>(keyPair));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -403,7 +403,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setChainAddress(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setChainAddress(static_cast<uint32_t>(chain));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -414,7 +414,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeHeight(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setTreeHeight(static_cast<uint32_t>(height));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -425,7 +425,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setHashAddress(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setHashAddress(static_cast<uint32_t>(hash));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -436,7 +436,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setTreeIndex(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         adrs->setTreeIndex(static_cast<uint32_t>(index));
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
     }
 }
 
@@ -447,7 +447,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getKeyPairAddress(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         return static_cast<jlong>(adrs->getKeyPairAddress());
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return 0;
     }
 }
@@ -459,7 +459,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getTreeIndex(
         ADRS* adrs = reinterpret_cast<ADRS*>(adrsPtr);
         return static_cast<jlong>(adrs->getTreeIndex());
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return 0;
     }
 }
@@ -484,7 +484,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_computeHash(
 
         return byteVectorToJbyteArray(env, output);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -510,7 +510,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_chain(
                                   PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -527,7 +527,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsPkGen(
         ByteVector result = wots_pkGen(SKseed, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -545,7 +545,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsSign(
         ByteVector result = wots_sign(M, SKseed, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -563,7 +563,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_wotsPkFromSig(
         ByteVector result = wots_pkFromSig(sig, M, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -585,7 +585,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_xmssNode(
                                       static_cast<uint32_t>(z), PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -604,7 +604,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_xmssSign(
         ByteVector result = xmss_sign(M, SKseed, static_cast<uint32_t>(idx), PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -622,7 +622,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_xmssPkFromSig(
         ByteVector result = xmss_pkFromSig(static_cast<uint32_t>(idx), SIGXMSS, M, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -645,7 +645,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_htSign(
                                     static_cast<uint32_t>(idxleaf));
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -665,7 +665,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_htVerify(
                                 static_cast<uint32_t>(idxleaf), PKroot);
         return static_cast<jboolean>(result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return JNI_FALSE;
     }
 }
@@ -686,7 +686,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_forsSkGen(
         ByteVector result = fors_skGen(SKseed, PKseed, *adrs, static_cast<uint32_t>(idx));
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -704,7 +704,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_forsNode(
                                       static_cast<uint32_t>(z), PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -723,7 +723,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_forsSign(
         ByteVector result = fors_sign(md, SKseed, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -744,7 +744,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_forsPkFromSig(
         ByteVector result = fors_pkFromSig(SIGFORS, md, PKseed, *adrs);
         return byteVectorToJbyteArray(env, result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -766,7 +766,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhKeyGen(
 
         return result;
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -786,7 +786,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhSign(
         ByteVector signature = slh_sign(M, ctx, SK);
         return byteVectorToJbyteArray(env, signature);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -806,7 +806,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_hashSlhSign(
         ByteVector signature = slh_sign(M, ctx, SK);
         return byteVectorToJbyteArray(env, signature);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return nullptr;
     }
 }
@@ -826,7 +826,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhVerify(
         bool result = slh_verify(M, SIG, ctx, PK);
         return static_cast<jboolean>(result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return JNI_FALSE;
     }
 }
@@ -848,7 +848,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_hashSlhVerify(
         bool result = slh_verify(M, SIG, ctx, PK);
         return static_cast<jboolean>(result);
     } catch (...) {
-        handleCppException(env);
+        handleCppException(env,std::current_exception());
         return JNI_FALSE;
     }
 }

@@ -235,7 +235,7 @@ public:
 
     // Métodos para manipular direcciones
     void setLayerAddress(uint32_t layer);
-    void setTreeAddress(const uint8_t tree[12]);
+    void setTreeAddress(uint64_t treeAddress);
     void setTypeAndClear(uint32_t type);
     void setKeyPairAddress(uint32_t keyPair);
     void setChainAddress(uint32_t chain);
