@@ -104,7 +104,7 @@ class FIPS205Tester {
         // Tests básicos de utilidades
         log("📁 SECCIÓN: Tests de Utilidades Básicas\n")
         results.add(runSingleTest("genLen2") { testGenLen2() })
-        results.add(runSingleTest("toInt") { testToInt() })
+        results.add(runSingleTest("toInt32") { testToInt() })
         results.add(runSingleTest("toByte") { testToByte() })
         results.add(runSingleTest("base2b") { testBase2b() })
         results.add(runSingleTest("RoundTripConversion") { testRoundTripConversion() })
@@ -221,26 +221,26 @@ class FIPS205Tester {
             val testBytes1 = byteArrayOf(0x12, 0x34)
             val result1 = FunctionLink().toInt(testBytes1, 2)
             if (result1 != 0x1234L) {
-                return TestResult("toInt", false, "Caso 1: esperado=0x1234, obtenido=$result1")
+                return TestResult("toInt32", false, "Caso 1: esperado=0x1234, obtenido=$result1")
             }
 
             log(" caso 2/3")
             val testBytes2 = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
             val result2 = FunctionLink().toInt(testBytes2, 4)
             if (result2 != 0xFFFFFFFFL) {
-                return TestResult("toInt", false, "Caso 2: esperado=0xFFFFFFFF, obtenido=$result2")
+                return TestResult("toInt32", false, "Caso 2: esperado=0xFFFFFFFF, obtenido=$result2")
             }
 
             log(" caso 3/3")
             val testBytes3 = byteArrayOf(0x00, 0x00, 0x00, 0x00)
             val result3 = FunctionLink().toInt(testBytes3, 4)
             if (result3 != 0L) {
-                return TestResult("toInt", false, "Caso 3: esperado=0, obtenido=$result3")
+                return TestResult("toInt32", false, "Caso 3: esperado=0, obtenido=$result3")
             }
 
-            return TestResult("toInt", true, "Todos los casos de conversión pasaron")
+            return TestResult("toInt32", true, "Todos los casos de conversión pasaron")
         } catch (e: Exception) {
-            return TestResult("toInt", false, "Error: ${e.message}")
+            return TestResult("toInt32", false, "Error: ${e.message}")
         }
     }
 

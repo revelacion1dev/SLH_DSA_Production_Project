@@ -134,10 +134,12 @@ class NISTVectorTester(private val context: android.content.Context) {
 
 
                 // Ver si hay prehashing
-                val preHash = testGroup.getString("preHash")
+                val preHash = testGroup.optString("preHash", "no_prehash")
                 if (preHash == "preHash"){
-                    continue    // De momento solo haré pruebas con la implementacion pura
+                    log("🚫 Saltando grupo con preHash: $parameterSet")
+                    continue
                 }
+
                 // Para detectar si el test es reproducible
                 val deterministic = testGroup.optBoolean("deterministic", true)
                 if(!deterministic) {
@@ -239,9 +241,11 @@ class NISTVectorTester(private val context: android.content.Context) {
                 val parameterSet = testGroup.getString("parameterSet")
 
                 // Ver si hay prehashing
-                val preHash = testGroup.getString("preHash")
+
+                val preHash = testGroup.optString("preHash", "no_prehash")
                 if (preHash == "preHash"){
-                    continue    // De momento solo haré pruebas con la implementacion pura
+                    log("🚫 Saltando grupo con preHash: $parameterSet")
+                    continue
                 }
 
                 // Filtrar solo configuraciones SHAKE soportadas

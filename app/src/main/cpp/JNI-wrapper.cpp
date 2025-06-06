@@ -274,7 +274,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_toInt(
         JNIEnv* env, jobject /* this */, jbyteArray xBytes, jint n) {
     try {
         ByteVector x = jbyteArrayToByteVector(env, xBytes);
-        uint32_t result = toInt(x, static_cast<uint64_t>(n));
+        uint32_t result = toInt32(x, static_cast<uint64_t>(n));
         return static_cast<jlong>(result);
     } catch (...) {
         handleCppException(env,std::current_exception());

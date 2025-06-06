@@ -254,7 +254,7 @@ uint32_t bytesToUint32(const ByteVector& bytes, size_t offset = 0);
 
 // Algoritmos base
 uint32_t gen_len2(uint64_t n, uint64_t lg_w);
-uint32_t toInt(const ByteVector& X, uint64_t n);
+uint32_t toInt32(const ByteVector& X, uint64_t n);
 ByteVector toByte(const ByteVector& X, uint64_t n);
 uint8_t divmod256(ByteVector& num);
 std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len);
@@ -294,8 +294,8 @@ ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx
 ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs);
 
 // Algoritmos HT (Hypertree)
-ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf);
-bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed, uint64_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot);
+ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, uint64_t idx_tree, uint64_t idx_leaf);
+bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed, uint64_t idx_tree, uint64_t idx_leaf, const ByteVector& PKroot);
 
 // Algoritmos FORS
 ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs, uint32_t idx);

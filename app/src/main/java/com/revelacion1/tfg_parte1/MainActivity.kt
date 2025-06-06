@@ -554,7 +554,7 @@ class MainActivity : AppCompatActivity() {
         forceUpdateUI("📈 ESTADÍSTICAS DETALLADAS:\n")
 
         // Categorizar tests
-        val basicTests = results.filter { it.testName in listOf("genLen2", "toInt", "toByte", "base2b", "RoundTripConversion") }
+        val basicTests = results.filter { it.testName in listOf("genLen2", "toInt32", "toByte", "base2b", "RoundTripConversion") }
         val structureTests = results.filter { it.testName in listOf("ADRS", "computeHash") }
         val cryptoTests = results.filter { it.testName.contains("Algorithms") }
 

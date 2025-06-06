@@ -479,16 +479,38 @@ uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
 }
 
 // Algorithm 2: toInt
-uint32_t toInt(const ByteVector& X, uint64_t n) {
+uint32_t toInt32(const ByteVector& X, uint64_t n) {
+    if (X.size() < n) {
+        throw std::invalid_argument("Input array is too short");
+    }
+    if (n == 0) {
+        return 0;
+    }
+    uint32_t total = 0;
+    for (size_t i = 0; i < n; ++i) {
+        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
+        total = (total << 8) | static_cast<uint32_t>(X[i]);
+    }
+
+    return total;
+}
+// Algorithm 2: toInt
+uint64_t toInt64(const ByteVector& X, uint64_t n) {
     if (X.size() < n) {
         throw std::invalid_argument("Input array is too short");
     }
 
-    uint64_t total = 0;
-    for (uint64_t i = 0; i < n; ++i) {
-        total = 256 * total + static_cast<uint64_t>(X[i]);
+    if (n == 0) {
+        return 0;
     }
-    return static_cast<uint32_t>(total);
+
+    uint64_t total = 0;
+    for (size_t i = 0; i < n; ++i) {
+        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
+        total = (total << 8) | static_cast<uint64_t>(X[i]);
+    }
+
+    return total;
 }
 
 // Algorithm 3: toByte helper function
@@ -901,7 +923,7 @@ ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
 
 // Algorithm 12: ht_sign
 ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed,
-                   uint64_t idx_tree, uint32_t idx_leaf) {
+                   uint64_t idx_tree, uint64_t idx_leaf) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -917,8 +939,8 @@ ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVect
     ByteVector SIG_HT = SIG_tmp;
     ByteVector root = xmss_pkFromSig(idx_leaf, SIG_tmp, M, PKseed, adrs);
 
-    for (uint32_t j = 1; j < d; j++) {
-        uint32_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);
+    for (uint64_t j = 1; j < d; j++) {
+        uint64_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);
         idx_tree = idx_tree >> h_prima;
 
         adrs.setLayerAddress(j);
@@ -937,7 +959,7 @@ ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVect
 
 // Algorithm 13: ht_verify
 bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed,
-               uint64_t idx_tree, uint32_t idx_leaf, const ByteVector& PKroot) {
+               uint64_t idx_tree, uint64_t idx_leaf, const ByteVector& PKroot) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -959,8 +981,8 @@ bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& 
     ByteVector SIG_tmp(SIG_HT.begin(), SIG_HT.begin() + xmss_sig_size);
     ByteVector node = xmss_pkFromSig(idx_leaf, SIG_tmp, M, PKseed, adrs);
 
-    for (uint32_t j = 1; j < d; j++) {
-        uint32_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);
+    for (uint64_t j = 1; j < d; j++) {
+        uint64_t idx_leaf_j = idx_tree & ((1 << h_prima) - 1);
         idx_tree = idx_tree >> h_prima;
 
         adrs.setLayerAddress(j);
@@ -1194,10 +1216,9 @@ std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
     return std::make_pair(privateKey, publicKey);
 }
 
-
 SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
-                                                        const SLH_DSA_PrivateKey& privateKey,
-                                                        const ByteVector& addrnd) {
+                                    const SLH_DSA_PrivateKey& privateKey,
+                                    const ByteVector& addrnd) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -1249,27 +1270,25 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    // ✅ LÍNEAS 9-10: Convertir índices
-    uint64_t idx_tree = 0;
-    for (size_t i = 0; i < tmp_idx_tree.size() && i < 8; i++) {
-        idx_tree = (idx_tree << 8) | static_cast<uint64_t>(tmp_idx_tree[i]);
-    }
+    // ✅ LÍNEAS 9-10: Convertir índices CON FUNCIONES OPTIMIZADAS
+
+    // OPCIÓN 1: Replicar comportamiento exacto (limitando bytes)
+    size_t tree_bytes_to_read = std::min(tmp_idx_tree.size(), size_t(8));
+    uint64_t idx_tree = toInt64(tmp_idx_tree, tree_bytes_to_read);
     if (tree_idx_bits < 64) {
         idx_tree &= ((1ULL << tree_idx_bits) - 1);
     }
 
-    uint32_t idx_leaf = 0;
-    for (size_t i = 0; i < tmp_idx_leaf.size() && i < 4; i++) {
-        idx_leaf = (idx_leaf << 8) | static_cast<uint32_t>(tmp_idx_leaf[i]);
-    }
-    if (leaf_idx_bits < 32) {
+    size_t leaf_bytes_to_read = std::min(tmp_idx_leaf.size(), size_t(8));  // ✅ CAMBIO: también 8 para uint64_t
+    uint64_t idx_leaf = toInt64(tmp_idx_leaf, leaf_bytes_to_read);  // ✅ CAMBIO: uint64_t unificado
+    if (leaf_idx_bits < 64) {  // ✅ CAMBIO: 64 bits
         idx_leaf &= ((1ULL << leaf_idx_bits) - 1);
     }
 
     // ✅ LÍNEAS 11-13: Setup ADRS
     adrs.setTreeAddress(idx_tree);
     adrs.setTypeAndClear(FORS_TREE);
-    adrs.setKeyPairAddress(idx_leaf);
+    adrs.setKeyPairAddress(idx_leaf);  // ✅ Ahora idx_leaf es uint64_t
 
     // ✅ LÍNEA 14: SIG_FORS ← fors_sign(...)
     ByteVector SIG_FORS = fors_sign(md, privateKey.seed, privateKey.pkSeed, adrs);
@@ -1280,7 +1299,7 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     // ✅ LÍNEA 16: PK_FORS ← fors_pkFromSig(...)
     ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, privateKey.pkSeed, adrs);
 
-    // ✅ LÍNEA 17: SIG_HT ← ht_sign(...)
+    // ✅ LÍNEA 17: SIG_HT ← ht_sign(...) - Ahora ambos parámetros son uint64_t
     ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree, idx_leaf);
 
     // ✅ LÍNEA 18: SIG ← SIG || SIG_HT (concatenación explícita)
@@ -1295,6 +1314,7 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
 
     return signature;
 }
+
 
 
 // Algorithm 20: slh_verify_internal
@@ -1354,8 +1374,8 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    uint64_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
-    uint32_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+    uint64_t idx_tree = toInt64(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+    uint64_t idx_leaf = toInt64(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
 
     adrs.setTreeAddress(idx_tree);
     adrs.setTypeAndClear(FORS_TREE);
