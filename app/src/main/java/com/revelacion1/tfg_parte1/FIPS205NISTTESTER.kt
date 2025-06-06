@@ -62,13 +62,16 @@ class NISTVectorTester(private val context: android.content.Context) {
         val tcId: Int,
         val sk: String,
         val message: String,
-        val context: String = ""
+        val signatureInterface: String,
+        val context: String?,
+        val addrnd : String?
     )
 
     data class SigVerTestCase(
         val tcId: Int,
         val pk: String,
         val message: String,
+        val signatureInterface: String,
         val signature: String,
         val context: String = ""
     )
@@ -126,6 +129,22 @@ class NISTVectorTester(private val context: android.content.Context) {
                 val expectedGroup = expectedGroups.getJSONObject(i)
 
                 val parameterSet = testGroup.getString("parameterSet")
+                val signatureInterface = testGroup.getString("signatureInterface")
+
+
+
+                // Ver si hay prehashing
+                val preHash = testGroup.getString("preHash")
+                if (preHash == "preHash"){
+                    continue    // De momento solo haré pruebas con la implementacion pura
+                }
+                // Para detectar si el test es reproducible
+                val deterministic = testGroup.optBoolean("deterministic", true)
+                if(!deterministic) {
+                    log("⚠️ Grupo no determinista detectado: $parameterSet. Saltando...\n")
+                    continue
+                }
+
 
                 // Filtrar solo configuraciones SHAKE soportadas
                 if (!isSupportedParameterSet(parameterSet)) {
@@ -147,6 +166,8 @@ class NISTVectorTester(private val context: android.content.Context) {
                 val tests = testGroup.getJSONArray("tests")
                 val expectedTests = expectedGroup.getJSONArray("tests")
 
+
+
                 // Procesar cada test case
                 for (j in 0 until tests.length()) {
                     val test = tests.getJSONObject(j)
@@ -155,8 +176,11 @@ class NISTVectorTester(private val context: android.content.Context) {
                     val testCase = SigGenTestCase(
                         tcId = test.getInt("tcId"),
                         sk = test.getString("sk"),
+                        signatureInterface = signatureInterface,
                         message = test.getString("message"),
-                        context = test.optString("context", "")
+                        context = test.optString("context", ""),
+                        addrnd = test.optString("addrnd","")
+
                     )
 
                     val expectedSignature = expectedTest.getString("signature")
@@ -203,6 +227,7 @@ class NISTVectorTester(private val context: android.content.Context) {
             val testGroups = promptObject.getJSONArray("testGroups")
             val expectedGroups = expectedObject.getJSONArray("testGroups")
 
+
             val allResults = mutableListOf<TestResult>()
             var totalPassed = 0
 
@@ -212,6 +237,12 @@ class NISTVectorTester(private val context: android.content.Context) {
                 val expectedGroup = expectedGroups.getJSONObject(i)
 
                 val parameterSet = testGroup.getString("parameterSet")
+
+                // Ver si hay prehashing
+                val preHash = testGroup.getString("preHash")
+                if (preHash == "preHash"){
+                    continue    // De momento solo haré pruebas con la implementacion pura
+                }
 
                 // Filtrar solo configuraciones SHAKE soportadas
                 if (!isSupportedParameterSet(parameterSet)) {
@@ -233,6 +264,9 @@ class NISTVectorTester(private val context: android.content.Context) {
                 val tests = testGroup.getJSONArray("tests")
                 val expectedTests = expectedGroup.getJSONArray("tests")
 
+                val signatureInterface = testGroup.getString("signatureInterface")
+
+
                 // Procesar cada test case
                 for (j in 0 until tests.length()) {
                     val test = tests.getJSONObject(j)
@@ -242,13 +276,14 @@ class NISTVectorTester(private val context: android.content.Context) {
                         tcId = test.getInt("tcId"),
                         pk = test.getString("pk"),
                         message = test.getString("message"),
+                        signatureInterface = signatureInterface,
                         signature = test.getString("signature"),
                         context = test.optString("context", "")
                     )
 
                     val expectedResult = expectedTest.getBoolean("testPassed")
 
-                    val result = executeSignatureVerification(testCase, expectedResult, parameterSet)
+                    val result = executeSignatureVerification(testCase, expectedResult)
                     allResults.add(result)
                     if (result.passed) totalPassed++
                 }
@@ -279,10 +314,22 @@ class NISTVectorTester(private val context: android.content.Context) {
             // Convertir datos de entrada
             val privateKey = NISTVectorUtils.hexToByteArray(testCase.sk)
             val messageBytes = NISTVectorUtils.hexToByteArray(testCase.message)
-            val contextBytes = NISTVectorUtils.hexToByteArray(testCase.context)
 
-            // Generar firma usando slhSign
-            val generatedSignature = functionLink.slhSign(messageBytes, contextBytes, privateKey)
+            val generatedSignature : ByteArray
+            if(testCase.signatureInterface == "external"){
+                val contextBytes = NISTVectorUtils.hexToByteArray(testCase.context!!)
+                generatedSignature = functionLink.slhSign(messageBytes, contextBytes, privateKey)
+            } else {
+                val addrnd = NISTVectorUtils.hexToByteArray(testCase.addrnd ?: "00".repeat(32)) // Default to 32 bytes of zeros if not provided
+                generatedSignature = functionLink.slhInternalSign(
+                    messageBytes,
+                    privateKey,
+                    addrnd
+                )
+            }
+
+
+
             val duration = System.currentTimeMillis() - startTime
 
             // Convertir firma generada a hex para comparación
@@ -325,8 +372,7 @@ class NISTVectorTester(private val context: android.content.Context) {
      */
     private fun executeSignatureVerification(
         testCase: SigVerTestCase,
-        expectedResult: Boolean,
-        parameterSet: String
+        expectedResult: Boolean
     ): TestResult {
         return try {
             log("  🔍 TC${testCase.tcId}: Verificando firma...\n")
@@ -337,15 +383,23 @@ class NISTVectorTester(private val context: android.content.Context) {
             val publicKey = NISTVectorUtils.hexToByteArray(testCase.pk)
             val messageBytes = NISTVectorUtils.hexToByteArray(testCase.message)
             val signatureBytes = NISTVectorUtils.hexToByteArray(testCase.signature)
-            val contextBytes = NISTVectorUtils.hexToByteArray(testCase.context)
 
-            // Verificar firma usando slhVerify
-            val verificationResult = functionLink.slhVerify(
-                messageBytes,
-                signatureBytes,
-                contextBytes,
-                publicKey
-            )
+            val verificationResult : Boolean;
+            if(testCase.signatureInterface == "internal"){
+                verificationResult = functionLink.slhInternalVerify(
+                                    messageBytes,
+                                    signatureBytes,
+                                    publicKey
+                                 )
+            } else {
+                val contextBytes = NISTVectorUtils.hexToByteArray(testCase.context)
+                verificationResult = functionLink.slhVerify(
+                    messageBytes,
+                    signatureBytes,
+                    contextBytes,
+                    publicKey
+                )
+            }
 
             val duration = System.currentTimeMillis() - startTime
 

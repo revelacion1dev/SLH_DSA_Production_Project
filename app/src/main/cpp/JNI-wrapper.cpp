@@ -56,6 +56,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_initializeConfig(
 
     } catch(...) {
         handleCppException(env, std::current_exception());
+        return JNI_FALSE;
     }
 }
 
@@ -68,6 +69,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setParameterScheme(
         return static_cast<jboolean>(success);
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return JNI_FALSE;
     }
 }
 extern "C" JNIEXPORT jintArray JNICALL
@@ -96,6 +98,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getCurrentParameters(
         return result;
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return nullptr;
     }
 }
 
@@ -110,6 +113,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_getCurrentSchemaName(
         return env->NewStringUTF(params->name);
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return env->NewStringUTF("Error");
     }
 }
 
@@ -120,6 +124,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_isUsingCustomParameters(
         return static_cast<jboolean>(FIPS205ConfigManager::isUsingCustomParams());
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return JNI_FALSE;
     }
 }
 
@@ -140,6 +145,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_setCustomParameters(
         return static_cast<jboolean>(success);
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return JNI_FALSE;
     }
 }
 
@@ -151,6 +157,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_resetToStandard(
         return static_cast<jboolean>(FIPS205ConfigManager::resetToStandard(paramSet));
     } catch(...) {
         handleCppException(env,std::current_exception());
+        return JNI_FALSE;
     }
 }
 
@@ -771,7 +778,7 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhKeyGen(
     }
 }
 
-
+// Interfaces Externas
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_slhSign(
         JNIEnv* env, jobject /* this */,
@@ -792,6 +799,81 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_slhSign(
         return nullptr;
     }
 }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_slhVerify(
+        JNIEnv* env, jobject /* this */,
+        jbyteArray MBytes,
+        jbyteArray SIGBytes,
+        jbyteArray ctxBytes,
+        jbyteArray PKBytes) {
+    try {
+        ByteVector M = jbyteArrayToByteVector(env, MBytes);
+        ByteVector SIG = jbyteArrayToByteVector(env, SIGBytes);
+        ByteVector ctx = jbyteArrayToByteVector(env, ctxBytes);
+        ByteVector PKData = jbyteArrayToByteVector(env, PKBytes);
+
+        SLH_DSA_PublicKey PK = SLH_DSA_PublicKey::fromBytes(PKData);
+
+        bool result = slh_verify(M, SIG, ctx, PK);
+        return static_cast<jboolean>(result);
+    } catch (...) {
+        handleCppException(env,std::current_exception());
+        return JNI_FALSE;
+    }
+}
+
+
+// Interfaces internas
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_slhInternalSign(
+        JNIEnv* env,
+        jobject /* this */,
+        jbyteArray MArray,
+        jbyteArray SKSeed,
+        jbyteArray addrndArray) {
+    try {
+        // Implementación simplificada - en realidad necesitarías una función slh_sign_internal
+        ByteVector M = jbyteArrayToByteVector(env, MArray);
+        ByteVector S = jbyteArrayToByteVector(env, SKSeed);
+        ByteVector addrnd = jbyteArrayToByteVector(env, addrndArray);
+
+        SLH_DSA_PrivateKey SK = SLH_DSA_PrivateKey::fromBytes(S);
+
+        //
+        SLH_DSA_Signature signature = slh_sign_internal(M, SK, addrnd);
+
+        // Convertir la firma a ByteVector
+        ByteVector signatureBytes = signature.toBytes();
+
+        return byteVectorToJbyteArray(env, signatureBytes);
+    } catch (...) {
+        handleCppException(env,std::current_exception());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_revelacion1_tfg_1parte1_FunctionLink_slhInternalVerify(
+        JNIEnv* env, jobject /* this */,
+        jbyteArray MBytes,
+        jbyteArray SIGBytes,
+        jbyteArray PK) {
+    try {
+        // Implementación simplificada - en realidad necesitarías una función slh_verify_internal
+        ByteVector M = jbyteArrayToByteVector(env, MBytes);
+        ByteVector SIG = jbyteArrayToByteVector(env, SIGBytes);
+        ByteVector PKData = jbyteArrayToByteVector(env, PK);
+
+        SLH_DSA_PublicKey PK = SLH_DSA_PublicKey::fromBytes(PKData);
+
+        bool result = slh_verify_internal(M, SIG, PK);
+        return static_cast<jboolean>(result);
+    } catch (...) {
+        handleCppException(env,std::current_exception());
+        return JNI_FALSE;
+    }
+}
+
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_hashSlhSign(
@@ -813,25 +895,6 @@ Java_com_revelacion1_tfg_1parte1_FunctionLink_hashSlhSign(
     }
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_revelacion1_tfg_1parte1_FunctionLink_slhVerify(
-        JNIEnv* env, jobject /* this */, jbyteArray MBytes,
-        jbyteArray SIGBytes, jbyteArray ctxBytes, jbyteArray PKBytes) {  // ¡Sin paramSet!
-    try {
-        ByteVector M = jbyteArrayToByteVector(env, MBytes);
-        ByteVector SIG = jbyteArrayToByteVector(env, SIGBytes);
-        ByteVector ctx = jbyteArrayToByteVector(env, ctxBytes);
-        ByteVector PKData = jbyteArrayToByteVector(env, PKBytes);
-
-        SLH_DSA_PublicKey PK = SLH_DSA_PublicKey::fromBytes(PKData);
-
-        bool result = slh_verify(M, SIG, ctx, PK);
-        return static_cast<jboolean>(result);
-    } catch (...) {
-        handleCppException(env,std::current_exception());
-        return JNI_FALSE;
-    }
-}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_revelacion1_tfg_1parte1_FunctionLink_hashSlhVerify(

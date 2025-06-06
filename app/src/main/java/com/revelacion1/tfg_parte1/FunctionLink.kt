@@ -83,8 +83,12 @@ class FunctionLink {
     external fun forsSign(md: ByteArray, SKseed: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
     external fun forsPkFromSig(SIGFORS: ByteArray, md: ByteArray, PKseed: ByteArray, adrsPtr: Long): ByteArray
 
-    // ALGORITMOS SLH-DSA PRINCIPALES (ESTAS SON LAS INTERFACES QUE DEBEN SER PUBLICAS EN LA LIBRERIA)
 
+    //Interfaces internas (se introduce un addrnd generado)
+    external fun slhInternalSign(M: ByteArray, SKSeed: ByteArray,addrnd: ByteArray): ByteArray
+    external fun slhInternalVerify(M: ByteArray, SIG: ByteArray, PK: ByteArray): Boolean
+
+    //Interfaces externas (para uso directo en la app
     external fun slhKeyGen(): Array<ByteArray>
     external fun slhSign(M: ByteArray, ctx: ByteArray, SK: ByteArray): ByteArray
     external fun slhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PK: ByteArray): Boolean

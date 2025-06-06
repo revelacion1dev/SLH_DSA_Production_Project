@@ -289,7 +289,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
 ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs);
 
 // Algoritmos XMSS
-ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs);
+ByteVector xmss_node(const ByteVector& SKseed, uint64_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs);
 ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx, const ByteVector& PKseed, ADRS& adrs);
 ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs);
 
@@ -303,12 +303,12 @@ ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const Byt
 ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs);
 ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md, const ByteVector& PKseed, ADRS& adrs);
 
-// Algoritmos SLH-DSA principales
+// Algoritmos SLH-DSA internos
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed);
 SLH_DSA_Signature slh_sign_internal(const ByteVector& M, const SLH_DSA_PrivateKey& privateKey, const ByteVector& addrnd = ByteVector());
 bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK);
 
-// API pública
+// Algoritmos Externos
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen();                                                                              // Genera una clave pública y privada de SLH-DSA
 //std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen(const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed); //Adopta la clave pública y privada de SLH-DSA a partir de semillas
 ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_PrivateKey& SK);

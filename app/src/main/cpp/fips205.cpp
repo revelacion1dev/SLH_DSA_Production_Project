@@ -764,7 +764,7 @@ ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const Byte
 }
 
 // Algorithm 9: xmss_node
-ByteVector xmss_node(const ByteVector& SKseed, uint32_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs) {
+ByteVector xmss_node(const ByteVector& SKseed, uint64_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs) {
 
     ByteVector node;
     if (z == 0) {
@@ -1354,7 +1354,7 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    uint32_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
+    uint64_t idx_tree = toInt(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
     uint32_t idx_leaf = toInt(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
 
     adrs.setTreeAddress(idx_tree);
