@@ -2,7 +2,6 @@ package com.revelacion1.tfg_parte1
 
 import android.util.Log
 import org.json.JSONObject
-import org.json.JSONArray
 
 /**
  * Utilidades para manipulación de datos hexadecimales
@@ -163,7 +162,16 @@ class NISTVectorTester(private val context: android.content.Context) {
                     continue
                 }
 
-                functionLink.initializeConfig(config)
+                // Configurar el esquema
+                val configSuccess = functionLink.initializeConfig(config)
+                if (!configSuccess) {
+                    log("❌ Error inicializando configuración para: $parameterSet\n")
+                    continue
+                }
+
+                // Mostrar parámetros del esquema configurado
+                showCurrentSchemaParameters(parameterSet)
+
 
                 val tests = testGroup.getJSONArray("tests")
                 val expectedTests = expectedGroup.getJSONArray("tests")
@@ -263,7 +271,15 @@ class NISTVectorTester(private val context: android.content.Context) {
                     continue
                 }
 
-                functionLink.initializeConfig(config)
+                // Configurar el esquema
+                val configSuccess = functionLink.initializeConfig(config)
+                if (!configSuccess) {
+                    log("❌ Error inicializando configuración para: $parameterSet\n")
+                    continue
+                }
+
+                // Mostrar parámetros del esquema configurado
+                showCurrentSchemaParameters(parameterSet)
 
                 val tests = testGroup.getJSONArray("tests")
                 val expectedTests = expectedGroup.getJSONArray("tests")
@@ -469,6 +485,68 @@ class NISTVectorTester(private val context: android.content.Context) {
         } catch (e: Exception) {
             log("💥 Error leyendo archivo $fileName: ${e.message}\n")
             null
+        }
+    }
+    /*
+     * Funcion para ver el esquema actual
+     */
+    /**
+     * Función para mostrar parámetros usando la versión simple
+     */
+    private fun showCurrentSchemaParameters(expectedParameterSet: String) {
+        try {
+            val schemaInfo = functionLink.getCurrentSchemaInfo()
+            if (schemaInfo == null) {
+                log("❌ Error obteniendo parámetros del esquema\n")
+                return
+            }
+
+            // Verificar que el nombre coincide con lo esperado
+            val nameMatch = schemaInfo.name == expectedParameterSet
+            val matchIcon = if (nameMatch) "✅" else "⚠️"
+
+            log("📋 CONFIGURACIÓN ESQUEMA ACTIVO $matchIcon")
+            log("┌─────────────────────────────────────────────────────────┐")
+            log("│ NOMBRE: ${schemaInfo.name.padEnd(42)} │")
+            log("│ Esperado: ${expectedParameterSet.padEnd(40)} │")
+            log("├─────────────────────────────────────────────────────────┤")
+            log("│ PARÁMETROS CORE:                                        │")
+            log("│   n (longitud hash):           ${schemaInfo.n.toString().padStart(3)} bytes      │")
+            log("│   h (altura total):            ${schemaInfo.h.toString().padStart(3)}           │")
+            log("│   d (capas):                   ${schemaInfo.d.toString().padStart(3)}           │")
+            log("│   h' (altura por capa):        ${schemaInfo.h_prima.toString().padStart(3)}           │")
+            log("│   a (árboles FORS):            ${schemaInfo.a.toString().padStart(3)}           │")
+            log("│   k (altura FORS):             ${schemaInfo.k.toString().padStart(3)}           │")
+            log("│   lg_w (log2 Winternitz):      ${schemaInfo.lg_w.toString().padStart(3)}           │")
+            log("│   m (longitud mensaje hash):   ${schemaInfo.m.toString().padStart(3)} bytes      │")
+            log("├─────────────────────────────────────────────────────────┤")
+            log("│ INFORMACIÓN ADICIONAL:                                  │")
+            log("│   Categoría seguridad:         ${schemaInfo.security_category.toString().padStart(3)}           │")
+            log("│   Tamaño clave pública:        ${schemaInfo.pk_bytes.toString().padStart(4)} bytes    │")
+            log("│   Tamaño firma:                ${schemaInfo.sig_bytes.toString().padStart(5)} bytes   │")
+            log("│   Usa SHAKE:                   ${if(schemaInfo.is_shake) "SÍ " else "NO "}          │")
+            log("└─────────────────────────────────────────────────────────┘")
+
+            // Calcular información derivada
+            val w = 1 shl schemaInfo.lg_w
+            val tree_height_per_layer = if (schemaInfo.d > 0) schemaInfo.h / schemaInfo.d else 0
+            val hash_function = if (schemaInfo.is_shake) "SHAKE256" else "SHA2"
+
+            log("📊 INFORMACIÓN CALCULADA:")
+            log("   • Parámetro Winternitz (w): $w")
+            log("   • Altura por capa calculada: $tree_height_per_layer (h/d = ${schemaInfo.h}/${schemaInfo.d})")
+            log("   • Función hash: $hash_function")
+            log("   • Total árboles FORS: ${schemaInfo.a}")
+            log("   • Verificación h' vs h/d: ${if (schemaInfo.h_prima == tree_height_per_layer) "✅ CORRECTO" else "❌ ERROR"}")
+            log("")
+
+            if (!nameMatch) {
+                log("⚠️ ADVERTENCIA: El nombre del esquema configurado (${schemaInfo.name}) no coincide con el esperado ($expectedParameterSet)")
+                log("")
+            }
+
+        } catch (e: Exception) {
+            log("💥 Error mostrando parámetros: ${e.message}\n")
         }
     }
 

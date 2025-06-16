@@ -1,199 +1,336 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
+    android:fillViewport="true"
     tools:context=".MainActivity">
 
-    <!-- Estado del sistema -->
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@android:color/black"
-        android:padding="8dp"
-        android:text="🔄 Inicializando biblioteca SLH-DSA..."
-        android:textColor="@android:color/white"
-        android:textSize="14sp"
-        android:textStyle="bold" />
-
-    <!-- Sección de Tests del Sistema -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp"
-        android:text="🧪 Tests del Sistema"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/black" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <Button
-            android:id="@+id/btnQuickTest"
-            android:layout_width="0dp"
+        <!-- Estado del sistema -->
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="4dp"
-            android:text="Test Rápido"
+            android:background="@android:color/black"
+            android:padding="8dp"
+            android:text="🔄 Inicializando biblioteca SLH-DSA..."
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <!-- Sección de Tests del Sistema -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
+            android:text="🧪 Tests del Sistema"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnFullTest"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Tests Completos"
+                android:textSize="12sp"
+                android:backgroundTint="@android:color/holo_blue_light" />
+
+        </LinearLayout>
+
+        <!-- NUEVO: Botón para Test de Vectores NIST -->
+        <Button
+            android:id="@+id/btnNistTest"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🏛️ Test Vectores NIST"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:backgroundTint="@android:color/holo_orange_light"
+            android:textColor="@android:color/white" />
+
+        <!-- Separador -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Sección de Generación de Firmas -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="✍️ Generación de Firmas"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black" />
+
+        <!-- Selección de algoritmo -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Algoritmo SLH-DSA:"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/spinnerAlgorithm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Generación de claves -->
+        <Button
+            android:id="@+id/btnGenerateKeys"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔑 Generar Claves"
+            android:backgroundTint="@android:color/holo_purple" />
+
+        <!-- Información de claves MEJORADA -->
+        <LinearLayout
+            android:id="@+id/layoutKeyInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@android:color/darker_gray"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔑 Claves Generadas:"
+                android:textColor="@android:color/white"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvPublicKeyInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@android:color/holo_green_light"
+                android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvPrivateKeyInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@android:color/holo_red_light"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <!-- Campo de mensaje -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="4dp"
+            android:text="Mensaje a firmar:"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/etMessage"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@android:drawable/edit_text"
+            android:hint="Escribe aquí el mensaje que quieres firmar..."
+            android:inputType="textMultiLine"
+            android:padding="8dp"
+            android:textSize="14sp" />
+
+        <!-- Botón de firmar -->
+        <Button
+            android:id="@+id/btnSign"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:enabled="false"
+            android:text="✍️ Firmar Mensaje"
+            android:backgroundTint="@android:color/holo_red_light" />
+
+        <!-- Separador -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- NUEVA SECCIÓN: Verificación de Firmas -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="🔍 Verificación de Firmas"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black" />
+
+        <!-- Campo para la firma -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Firma (hexadecimal):"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etSignature"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@android:drawable/edit_text"
+            android:hint="Pega aquí la firma en formato hexadecimal..."
+            android:inputType="textMultiLine"
+            android:padding="8dp"
             android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <!-- Campo para el mensaje original -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Mensaje original:"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etOriginalMessage"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@android:drawable/edit_text"
+            android:hint="Introduce el mensaje original aquí..."
+            android:inputType="textMultiLine"
+            android:padding="8dp"
+            android:textSize="14sp" />
+
+        <!-- Campo para la clave pública -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Clave Pública (hexadecimal):"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etPublicKey"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@android:drawable/edit_text"
+            android:hint="Pega aquí la clave pública en formato hexadecimal..."
+            android:inputType="textMultiLine"
+            android:padding="8dp"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <!-- Botón de verificar -->
+        <Button
+            android:id="@+id/btnVerify"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🔍 Verificar Firma"
             android:backgroundTint="@android:color/holo_green_light" />
 
+        <!-- Resultado de verificación -->
+        <LinearLayout
+            android:id="@+id/layoutVerifyResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@android:color/darker_gray"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvVerifyResult"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@android:color/white"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- Separador -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Botón limpiar -->
         <Button
-            android:id="@+id/btnFullTest"
-            android:layout_width="0dp"
+            android:id="@+id/btnClear"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="4dp"
-            android:text="Tests Completos"
-            android:textSize="12sp"
-            android:backgroundTint="@android:color/holo_blue_light" />
+            android:text="🗑️ Limpiar Resultados"
+            android:backgroundTint="@android:color/darker_gray" />
+
+        <!-- Área de resultados -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
+            android:text="📊 Resultados:"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:background="@android:color/black"
+            android:padding="8dp">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <TextView
+                    android:id="@+id/tvResults"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="📝 Listo para ejecutar tests...\n\n"
+                    android:textColor="@android:color/white"
+                    android:textSize="12sp" />
+
+            </ScrollView>
+
+        </LinearLayout>
+
+        <!-- Espacio adicional al final -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="20dp" />
 
     </LinearLayout>
 
-    <!-- NUEVO: Botón para Test de Vectores NIST -->
-    <Button
-        android:id="@+id/btnNistTest"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🏛️ Test Vectores NIST"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:backgroundTint="@android:color/holo_orange_light"
-        android:textColor="@android:color/white" />
-
-    <!-- Separador -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp"
-        android:background="@android:color/darker_gray" />
-
-    <!-- Sección de Generación de Firmas -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="✍️ Generación de Firmas"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/black" />
-
-    <!-- Selección de algoritmo -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Algoritmo SLH-DSA:"
-        android:textSize="14sp"
-        android:layout_marginBottom="4dp" />
-
-    <Spinner
-        android:id="@+id/spinnerAlgorithm"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp" />
-
-    <!-- Generación de claves -->
-    <Button
-        android:id="@+id/btnGenerateKeys"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🔑 Generar Claves"
-        android:backgroundTint="@android:color/holo_purple" />
-
-    <!-- Información de claves -->
-    <LinearLayout
-        android:id="@+id/layoutKeyInfo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="@android:color/darker_gray"
-        android:orientation="vertical"
-        android:padding="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tvKeyInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@android:color/white"
-            android:textSize="12sp" />
-
-    </LinearLayout>
-
-    <!-- Campo de mensaje -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="4dp"
-        android:text="Mensaje a firmar:"
-        android:textSize="14sp" />
-
-    <EditText
-        android:id="@+id/etMessage"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:background="@android:drawable/edit_text"
-        android:hint="Escribe aquí el mensaje que quieres firmar..."
-        android:inputType="textMultiLine"
-        android:padding="8dp"
-        android:textSize="14sp" />
-
-    <!-- Botón de firmar -->
-    <Button
-        android:id="@+id/btnSign"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:enabled="false"
-        android:text="✍️ Firmar Mensaje"
-        android:backgroundTint="@android:color/holo_red_light" />
-
-    <!-- Botón limpiar -->
-    <Button
-        android:id="@+id/btnClear"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🗑️ Limpiar Resultados"
-        android:backgroundTint="@android:color/darker_gray" />
-
-    <!-- Área de resultados -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp"
-        android:text="📊 Resultados:"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/black" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@android:color/black"
-        android:padding="8dp">
-
-        <TextView
-            android:id="@+id/tvResults"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:text="📝 Listo para ejecutar tests...\n\n"
-            android:textColor="@android:color/white"
-            android:textSize="12sp" />
-
-    </ScrollView>
-
-</LinearLayout>
+</ScrollView>

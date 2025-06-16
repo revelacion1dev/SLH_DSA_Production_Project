@@ -1,5 +1,7 @@
 package com.revelacion1.tfg_parte1
 
+import android.util.Log
+
 /**
  * Interface JNI corregida para FIPS205 con ConfigManager integrado
  *
@@ -21,7 +23,7 @@ class FunctionLink {
 
     external fun initializeConfig(defaultScheme: Int): Boolean
     external fun setParameterScheme(scheme: Int): Boolean
-    external fun getCurrentParameters(): IntArray
+    external fun getCurrentParameters(): Array<Any>
     external fun getCurrentSchemaName(): String
     external fun isUsingCustomParameters(): Boolean
     external fun setCustomParameters(n: Int, h: Int, d: Int, h_prima: Int, a: Int, k: Int, lg_w: Int): Boolean
@@ -97,11 +99,41 @@ class FunctionLink {
     external fun hashSlhSign(M: ByteArray, ctx: ByteArray, PH: ByteArray, SK: ByteArray): ByteArray
     external fun hashSlhVerify(M: ByteArray, SIG: ByteArray, ctx: ByteArray, PH: ByteArray, PK: ByteArray): Boolean
 
+    // Clase auxiliar para tipar la informacion del esquema
+    // HELPER: Función para extraer parámetros fácilmente
+    fun getCurrentSchemaInfo(): SchemaInfo? {
+        return try {
+            val array = getCurrentParameters()
+
+            val name = array[0] as String
+            val intParams = array[1] as IntArray
+            val isShake = array[2] as Boolean
+
+            SchemaInfo(
+                name = name,
+                n = intParams[0],
+                h = intParams[1],
+                d = intParams[2],
+                h_prima = intParams[3],
+                a = intParams[4],
+                k = intParams[5],
+                lg_w = intParams[6],
+                m = intParams[7],
+                security_category = intParams[8],
+                pk_bytes = intParams[9],
+                sig_bytes = intParams[10],
+                is_shake = isShake
+            )
+        } catch (e: Exception) {
+            Log.e("FunctionLink", "Error parsing schema info: ${e.message}")
+            null
+        }
+    }
 
     /**
      * Clase de datos para información del esquema
      */
-    data class SchemeInfo(
+    data class SchemaInfo(
         val name: String,
         val n: Int,
         val h: Int,
@@ -111,11 +143,9 @@ class FunctionLink {
         val k: Int,
         val lg_w: Int,
         val m: Int,
-        val securityCategory: Int,
-        val isCustom: Boolean
-    ) {
-        override fun toString(): String {
-            return "$name (n=$n, seg=$securityCategory)" + if (isCustom) " [CUSTOM]" else ""
-        }
-    }
+        val security_category: Int,
+        val pk_bytes: Int,
+        val sig_bytes: Int,
+        val is_shake: Boolean
+    )
 }

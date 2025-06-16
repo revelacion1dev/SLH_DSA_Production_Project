@@ -49,12 +49,16 @@ struct SLH_DSA_Params {
 // Declaración adelantada
 const SLH_DSA_Params* get_params(SLH_DSA_ParamSet set);
 
-// ConfigManager MEJORADO con thread-safety y validación
+
+// ConfigManager (Encargado de manejar la configuracion de los parametros)
 class FIPS205ConfigManager {
 private:
+
+    // Static garantiza un patron singleton en los atributos
+
     static SLH_DSA_ParamSet current_schema;
     static const SLH_DSA_Params* current_params;
-    static std::mutex config_mutex; // Para thread-safety
+    static std::mutex config_mutex;
     static bool is_initialized;
 
     // Validar que los parámetros sean consistentes
@@ -76,42 +80,86 @@ private:
     }
 
 public:
-    // Inicialización thread-safe
-    static void initialize(SLH_DSA_ParamSet default_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
+    // Inicialización thread-safe CORREGIDA
+    static bool initialize(SLH_DSA_ParamSet default_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
         std::lock_guard<std::mutex> lock(config_mutex);
 
         if (!is_initialized) {
-            setSchemaUnsafe(default_schema);
-            is_initialized = true;
+            // Primera vez - inicialización normal
+            if (static_cast<int>(default_schema) < 0 ||
+                default_schema >= SLH_DSA_ParamSet::PARAM_COUNT) {
+                return false;
+            }
+
+            if (setSchemaUnsafe(default_schema)) {
+                is_initialized = true;
+                return true;
+            }
+            return false;
+        } else {
+            // Ya inicializado - comportarse como setSchema
+            if (static_cast<int>(default_schema) < 0 ||
+                default_schema >= SLH_DSA_ParamSet::PARAM_COUNT) {
+                return false;
+            }
+
+            return setSchemaUnsafe(default_schema);
         }
     }
 
-    // Función para cambiar el esquema activo (thread-safe)
+    // Función para cambiar el esquema activo (thread-safe) CORREGIDA
     static bool setSchema(SLH_DSA_ParamSet schema) {
         std::lock_guard<std::mutex> lock(config_mutex);
-        return setSchemaUnsafe(schema);
+
+        // AGREGADO: Validar rango del enum antes de proceder
+        if (static_cast<int>(schema) < 0 ||
+            schema >= SLH_DSA_ParamSet::PARAM_COUNT) {
+            return false;
+        }
+
+        // CORREGIDO: Marcar como inicializado si tiene éxito
+        bool result = setSchemaUnsafe(schema);
+        if (result && !is_initialized) {
+            is_initialized = true;
+        }
+        return result;
     }
 
-    // Función para obtener parámetros actuales (thread-safe)
+    // Función para obtener parámetros actuales (thread-safe) CORREGIDA
     static const SLH_DSA_Params* getCurrentParams() {
         std::lock_guard<std::mutex> lock(config_mutex);
 
         if (!is_initialized) {
-            // Auto-inicializar con parámetros por defecto
-            setSchemaUnsafe(SLH_DSA_ParamSet::SLH_DSA_SHAKE_256s);
-            is_initialized = true;
+            // Si no esta inicializado
+            if (setSchemaUnsafe(SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s)) {
+                is_initialized = true;
+            }
+        }
+
+        // AGREGADO: Verificar que current_params no sea nullptr
+        if (!current_params) {
+            // Último recurso: intentar forzar inicialización
+            setSchemaUnsafe(SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s);
         }
 
         return current_params;
     }
 
-    // Función para obtener el esquema actual
+    // Función para obtener el esquema actual CORREGIDA
     static SLH_DSA_ParamSet getCurrentSchema() {
         std::lock_guard<std::mutex> lock(config_mutex);
+
+        // AGREGADO: Auto-inicializar si es necesario
+        if (!is_initialized) {
+            if (setSchemaUnsafe(SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s)) {
+                is_initialized = true;
+            }
+        }
+
         return current_schema;
     }
 
-    // Función para testing con parámetros custom (MEJORADA)
+    // Función para testing con parámetros custom CORREGIDA
     static bool setCustomParams(uint32_t n, uint32_t h, uint32_t d, uint32_t h_prima,
                                 uint32_t a, uint32_t k, uint32_t lg_w) {
         std::lock_guard<std::mutex> lock(config_mutex);
@@ -149,6 +197,9 @@ public:
         current_params = &custom_params;
         current_schema = static_cast<SLH_DSA_ParamSet>(-1); // Marca como custom
 
+        // AGREGADO: Marcar como inicializado
+        is_initialized = true;
+
         return true;
     }
 
@@ -158,10 +209,22 @@ public:
         return current_schema == static_cast<SLH_DSA_ParamSet>(-1);
     }
 
-    // Reset a parámetros estándar (en este caso de 128 ya que se toma la version movil)
+    // Reset a parámetros estándar CORREGIDO
     static bool resetToStandard(SLH_DSA_ParamSet schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
         std::lock_guard<std::mutex> lock(config_mutex);
-        return setSchemaUnsafe(schema);
+
+        // AGREGADO: Validar rango del enum
+        if (static_cast<int>(schema) < 0 ||
+            schema >= SLH_DSA_ParamSet::PARAM_COUNT) {
+            return false;
+        }
+
+        // CORREGIDO: Marcar como inicializado si tiene éxito
+        bool result = setSchemaUnsafe(schema);
+        if (result) {
+            is_initialized = true;
+        }
+        return result;
     }
 
 private:

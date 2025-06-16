@@ -46,23 +46,6 @@ bool ensure_quick_context_initialized() {
     return g_quick_ctx_initialized && g_quick_shake_ctx;
 }
 
-// Fast SHAKEd256 computation with context reuse
-bool computeShake_quick(const ByteVector& input, ByteVector& output, size_t outputLen) {
-    if (!ensure_quick_context_initialized()) {
-        return computeShake(input, output, outputLen);
-    }
-
-    output.resize(outputLen);
-
-    if (!EVP_DigestInit_ex(g_quick_shake_ctx, EVP_shake256(), nullptr) ||
-        !EVP_DigestUpdate(g_quick_shake_ctx, input.data(), input.size()) ||
-        !EVP_DigestFinalXOF(g_quick_shake_ctx, output.data(), outputLen)) {
-        return false;
-    }
-
-    return true;
-}
-
 // Fast concatenate and hash with context reuse
 bool concatenateAndHash_quick(const std::vector<ByteVector>& inputs, ByteVector& output, size_t outputLen) {
     if (!ensure_quick_context_initialized()) {
@@ -86,7 +69,7 @@ bool concatenateAndHash_quick(const std::vector<ByteVector>& inputs, ByteVector&
 }
 
 // Static member initialization
-SLH_DSA_ParamSet FIPS205ConfigManager::current_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_256s;
+SLH_DSA_ParamSet FIPS205ConfigManager::current_schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s; // Esquema por defecto
 const SLH_DSA_Params* FIPS205ConfigManager::current_params = nullptr;
 std::mutex FIPS205ConfigManager::config_mutex;
 bool FIPS205ConfigManager::is_initialized = false;
@@ -647,18 +630,18 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
     const size_t len2 = gen_len2(n, lg_w);
     const size_t len = len1 + len2;
 
-    // ✅ LÍNEA 1: csum ← 0
+    // LÍNEA 1: csum ← 0
     uint32_t csum = 0;
 
-    // ✅ LÍNEA 2: msg ← base_2^b(M, lg_w, len_1)
+    // LÍNEA 2: msg ← base_2^b(M, lg_w, len_1)
     std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, static_cast<int>(len1));
 
-    // ✅ LÍNEAS 3-5: Compute checksum
+    // LÍNEAS 3-5: Compute checksum
     for (size_t i = 0; i < len1; i++) {
         csum += w - 1 - msg_base_w[i];
     }
 
-    // ✅ LÍNEA 6: csum ← csum << ((8 - ((len_2 · lg_w) mod 8)) mod 8)
+    // LÍNEA 6: csum ← csum << ((8 - ((len_2 · lg_w) mod 8)) mod 8)
     uint32_t shift_amount = (8 - ((len2 * lg_w) % 8)) % 8;
     csum = csum << shift_amount;
 
@@ -676,7 +659,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
         msg_complete[len1 + i] = csum_base_w[i];
     }
 
-    // ✅ LÍNEAS 8-10: Setup skADRS
+    // LÍNEAS 8-10: Setup skADRS
     ADRS skADRS = adrs;  // Copia para operaciones PRF
     skADRS.setTypeAndClear(WOTS_PRF);
     skADRS.setKeyPairAddress(adrs.getKeyPairAddress());
@@ -684,7 +667,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
     // Preparar buffer de firma
     ByteVector sig(len * n);
 
-    // ✅ LÍNEAS 11-16: Main signing loop
+    // LÍNEAS 11-16: Main signing loop
     for (size_t i = 0; i < len; i++) {
         // LÍNEA 12: skADRS.setChainAddress(i)
         skADRS.setChainAddress(static_cast<uint32_t>(i));
@@ -1123,7 +1106,7 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
     size_t auth_size = a * n;
     size_t tree_sig_size = sk_size + auth_size;
 
-    for (uint32_t i = 0; i < k; i++) {
+    for (size_t i = 0; i < k; i++) {
         size_t sk_offset = i * tree_sig_size;
         ByteVector sk(SIG_FORS.begin() + sk_offset, SIG_FORS.begin() + sk_offset + n);
 
