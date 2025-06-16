@@ -563,7 +563,7 @@ class FIPS205Tester {
         }
     }
 
-    // ✅ ADAPTATIVO: Test WOTS que se adapta al esquema actual
+
     private fun testWOTSAlgorithms(): TestResult {
         log("   🔑 Probando algoritmos WOTS+ (esquema actual)...")
 
@@ -585,7 +585,7 @@ class FIPS205Tester {
                 }
 
                 log(" chain (operación rápida)")
-                val X = ByteArray(pk.size) { 0x03 }  // ✅ Usar tamaño dinámico
+                val X = ByteArray(pk.size) { 0x03 }
                 val chainResult = functionLink.chain(X, 0, 3, pkSeed, adrs.ptr)
                 if (chainResult.size != pk.size) {
                     return TestResult("WOTS Algorithms", false,
@@ -593,7 +593,7 @@ class FIPS205Tester {
                 }
 
                 log(" wotsSign")
-                val message = ByteArray(pk.size) { 0x04 }  // ✅ Usar tamaño dinámico
+                val message = ByteArray(pk.size) { 0x04 }
                 adrs.setTypeAndClear(5) // WOTS_PRF
 
                 val startTime = System.currentTimeMillis()
@@ -606,7 +606,7 @@ class FIPS205Tester {
                 }
 
                 log(" wotsPkFromSig")
-                adrs.setTypeAndClear(0) // WOTS_HASH
+                adrs.setTypeAndClear(5) // WOTS_PRF ← CORREGIDO (era 0)
                 val recoveredPk = functionLink.wotsPkFromSig(signature, message, pkSeed, adrs.ptr)
                 if (!recoveredPk.contentEquals(pk)) {
                     return TestResult("WOTS Algorithms", false, "PK recuperada no coincide")

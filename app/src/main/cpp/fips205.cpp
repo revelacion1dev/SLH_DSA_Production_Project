@@ -224,13 +224,15 @@ SLH_DSA_Signature SLH_DSA_Signature::fromBytes(const ByteVector& data) {
 bool computeShake(const ByteVector& input, ByteVector& output, size_t outputLen) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
 
-    // ✅ CORRECCIÓN: Todas las variantes SHAKE usan SHAKE256
+
     const EVP_MD* shake_variant = EVP_shake256();
 
     if (params && params->is_shake) {
         // Siempre SHAKE256 para variantes SHAKE, independiente de n
         shake_variant = EVP_shake256();
+
     } else if (params) {
+
         //Si no es shake lanzamos una escepcion que diga to be done
         throw std::runtime_error("SHA variant not supported for this parameter set.");
     }
@@ -345,7 +347,22 @@ ByteVector uint32ToBytes(uint32_t value) {
             static_cast<uint8_t>(value & 0xFF)
     };
 }
+// Algorithm 2: toInt
+uint32_t toInt32(const ByteVector& X, uint64_t n) {
+    if (X.size() < n) {
+        throw std::invalid_argument("Input array is too short");
+    }
+    if (n == 0) {
+        return 0;
+    }
+    uint32_t total = 0;
+    for (size_t i = 0; i < n; ++i) {
+        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
+        total = (total << 8) | static_cast<uint32_t>(X[i]);
+    }
 
+    return total;
+}
 uint32_t bytesToUint32(const ByteVector& bytes, size_t offset) {
     if (bytes.size() < offset + 4) {
         throw std::invalid_argument("Array too small for uint32_t conversion");
@@ -461,22 +478,7 @@ uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
     return static_cast<uint32_t>(len2);
 }
 
-// Algorithm 2: toInt
-uint32_t toInt32(const ByteVector& X, uint64_t n) {
-    if (X.size() < n) {
-        throw std::invalid_argument("Input array is too short");
-    }
-    if (n == 0) {
-        return 0;
-    }
-    uint32_t total = 0;
-    for (size_t i = 0; i < n; ++i) {
-        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
-        total = (total << 8) | static_cast<uint32_t>(X[i]);
-    }
 
-    return total;
-}
 // Algorithm 2: toInt
 uint64_t toInt64(const ByteVector& X, uint64_t n) {
     if (X.size() < n) {

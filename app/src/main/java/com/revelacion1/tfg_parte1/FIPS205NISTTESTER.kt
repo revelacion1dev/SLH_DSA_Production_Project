@@ -473,7 +473,7 @@ class NISTVectorTester(private val context: android.content.Context) {
      */
     private fun isSupportedParameterSet(parameterSet: String): Boolean {
         return parameterSet.startsWith("SLH-DSA-SHAKE-") &&
-                (parameterSet.contains("128") || parameterSet.contains("256"))
+                (parameterSet.contains("128") || parameterSet.contains("256")||parameterSet.contains("192"))
     }
 
     /**

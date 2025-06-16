@@ -7,6 +7,10 @@ import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -532,7 +536,6 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
         return bytes.joinToString("") { String.format("%02X", it) }
     }
 
-    // RESTO DE FUNCIONES SIN CAMBIOS...
     private fun runNISTVectorTest() {
         if (!isTestRunning.compareAndSet(false, true)) {
             log("⚠️ Ya hay un test ejecutándose, espera a que termine\n")
@@ -543,28 +546,29 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
         btnNistTest.text = "Ejecutando Vectores NIST..."
 
         log("🔬 PROCESADOR DE VECTORES NIST - SOLO SHAKE\n")
-        log("📌 Configuraciones soportadas: SHAKE-128s/f, SHAKE-256s/f\n")
+        log("📌 Configuraciones soportadas: SHAKE-128s/f, SHAKE-192s/f, SHAKE-256s/f\n")
         log("🎯 Procesando archivos JSON reales de NIST\n")
         log("=".repeat(60) + "\n\n")
 
-        Thread {
+        // Usar coroutines con Dispatchers.IO para operaciones intensivas
+        lifecycleScope.launch(Dispatchers.Main) {
             val startTime = System.currentTimeMillis()
 
             try {
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     forceUpdateUI("🔧 Inicializando procesador de vectores NIST...\n")
                     forceUpdateUI("📂 Buscando archivos JSON en assets/\n\n")
                 }
 
+                // Ejecutar en background thread
                 val combinedResults = nistVectorTester.testOnlySHAKE()
-
-                runOnUiThread {
-                    displayNISTVectorResults("Test Combinado SHAKE", combinedResults)
-                }
 
                 val totalTime = System.currentTimeMillis() - startTime
 
-                runOnUiThread {
+                // Actualizar UI en main thread
+                withContext(Dispatchers.Main) {
+                    displayNISTVectorResults("Test Combinado SHAKE", combinedResults)
+
                     forceUpdateUI("\n🏁 PROCESAMIENTO VECTORES NIST COMPLETADO\n")
                     forceUpdateUI("⏱️ Tiempo total: ${totalTime}ms (${totalTime/1000.0}s)\n")
                     forceUpdateUI("=".repeat(60) + "\n")
@@ -591,14 +595,14 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
                 }
 
             } catch (e: Exception) {
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     forceUpdateUI("💥 ERROR en procesamiento vectores NIST: ${e.message}\n")
                     btnNistTest.isEnabled = true
                     btnNistTest.text = "🏛️ Test Vectores NIST"
                     isTestRunning.set(false)
                 }
             }
-        }.start()
+        }
     }
 
     private fun displayNISTVectorResults(testName: String, result: NISTVectorTester.TestResults) {
