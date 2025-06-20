@@ -52,7 +52,7 @@
 
         </LinearLayout>
 
-        <!-- NUEVO: Botón para Test de Vectores NIST -->
+        <!-- Botón para Test de Vectores NIST -->
         <Button
             android:id="@+id/btnNistTest"
             android:layout_width="match_parent"
@@ -104,7 +104,7 @@
             android:text="🔑 Generar Claves"
             android:backgroundTint="@android:color/holo_purple" />
 
-        <!-- Información de claves MEJORADA -->
+        <!-- Información de claves COMPLETAS -->
         <LinearLayout
             android:id="@+id/layoutKeyInfo"
             android:layout_width="match_parent"
@@ -115,29 +115,97 @@
             android:padding="8dp"
             android:visibility="gone">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🔑 Claves Generadas:"
-                android:textColor="@android:color/white"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
 
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🔑 Claves Generadas:"
+                    android:textColor="@android:color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- Botón para copiar claves -->
+                <Button
+                    android:id="@+id/btnCopyKeys"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:text="📋 Copiar"
+                    android:textSize="10sp"
+                    android:backgroundTint="@android:color/holo_blue_light"
+                    android:padding="4dp" />
+            </LinearLayout>
+
+            <!-- Clave pública -->
             <TextView
-                android:id="@+id/tvPublicKeyInfo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:text="🔓 Clave Pública:"
                 android:textColor="@android:color/holo_green_light"
                 android:textSize="12sp"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
 
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:background="@android:color/black"
+                android:padding="4dp"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:id="@+id/tvPublicKeyInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@android:color/holo_green_light"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true" />
+
+            </ScrollView>
+
+            <!-- Clave privada -->
             <TextView
-                android:id="@+id/tvPrivateKeyInfo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:text="🔐 Clave Privada:"
                 android:textColor="@android:color/holo_red_light"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:background="@android:color/black"
+                android:padding="4dp">
+
+                <TextView
+                    android:id="@+id/tvPrivateKeyInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@android:color/holo_red_light"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true" />
+
+            </ScrollView>
+
+            <!-- Advertencia de seguridad -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="⚠️ SOLO PARA PRUEBAS: Las claves privadas nunca deben exponerse en producción"
+                android:textColor="@android:color/holo_orange_light"
+                android:textSize="10sp"
+                android:textStyle="italic"
+                android:gravity="center" />
 
         </LinearLayout>
 
@@ -178,7 +246,7 @@
             android:layout_marginBottom="16dp"
             android:background="@android:color/darker_gray" />
 
-        <!-- NUEVA SECCIÓN: Verificación de Firmas -->
+        <!-- Sección de Verificación de Firmas -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -197,7 +197,7 @@ public:
         current_params = &custom_params;
         current_schema = static_cast<SLH_DSA_ParamSet>(-1); // Marca como custom
 
-        // AGREGADO: Marcar como inicializado
+
         is_initialized = true;
 
         return true;
@@ -213,13 +213,10 @@ public:
     static bool resetToStandard(SLH_DSA_ParamSet schema = SLH_DSA_ParamSet::SLH_DSA_SHAKE_128s) {
         std::lock_guard<std::mutex> lock(config_mutex);
 
-        // AGREGADO: Validar rango del enum
         if (static_cast<int>(schema) < 0 ||
             schema >= SLH_DSA_ParamSet::PARAM_COUNT) {
             return false;
         }
-
-        // CORREGIDO: Marcar como inicializado si tiene éxito
         bool result = setSchemaUnsafe(schema);
         if (result) {
             is_initialized = true;
@@ -373,7 +370,6 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
 
 // Algoritmos Externos
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen();                                                                              // Genera una clave pública y privada de SLH-DSA
-//std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen(const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed); //Adopta la clave pública y privada de SLH-DSA a partir de semillas
 ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_PrivateKey& SK);
 bool slh_verify(const ByteVector& M, const ByteVector& SIG, const ByteVector& ctx, const SLH_DSA_PublicKey& PK);
 

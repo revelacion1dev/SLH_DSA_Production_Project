@@ -76,17 +76,11 @@ bool FIPS205ConfigManager::is_initialized = false;
 
 // Parameter table
 const SLH_DSA_Params PARAMS[static_cast<size_t>(SLH_DSA_ParamSet::PARAM_COUNT)] = {
-        {"SLH-DSA-SHA2-128s",   16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  false},
         {"SLH-DSA-SHAKE-128s",  16, 63,  7,  9, 12, 14, 4, 30, 1, 32,  7856,  true },
-        {"SLH-DSA-SHA2-128f",   16, 66, 22,  3,  6, 33, 4, 34, 1, 32, 17088,  false},
         {"SLH-DSA-SHAKE-128f",  16, 66, 22,  3,  6, 33, 4, 34, 1, 32, 17088,  true },
-        {"SLH-DSA-SHA2-192s",   24, 63,  7,  9, 14, 17, 4, 39, 3, 48, 16224,  false},
         {"SLH-DSA-SHAKE-192s",  24, 63,  7,  9, 14, 17, 4, 39, 3, 48, 16224,  true },
-        {"SLH-DSA-SHA2-192f",   24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  false},
         {"SLH-DSA-SHAKE-192f",  24, 66, 22,  3,  8, 33, 4, 42, 3, 48, 35664,  true },
-        {"SLH-DSA-SHA2-256s",   32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  false},
         {"SLH-DSA-SHAKE-256s",  32, 64,  8,  8, 14, 22, 4, 47, 5, 64, 29792,  true },
-        {"SLH-DSA-SHA2-256f",   32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  false},
         {"SLH-DSA-SHAKE-256f",  32, 68, 17,  4,  9, 35, 4, 49, 5, 64, 49856,  true }
 };
 
@@ -347,7 +341,7 @@ ByteVector uint32ToBytes(uint32_t value) {
             static_cast<uint8_t>(value & 0xFF)
     };
 }
-// Algorithm 2: toInt
+// Algoritmo 2: toInt
 uint32_t toInt32(const ByteVector& X, uint64_t n) {
     if (X.size() < n) {
         throw std::invalid_argument("Input array is too short");
@@ -375,7 +369,7 @@ uint32_t bytesToUint32(const ByteVector& bytes, size_t offset) {
 }
 
 ByteVector toByte(uint64_t x, size_t n) {
-    // Según FIPS 205 Algorithm 3:
+    // Según FIPS 205 Algoritmo 3:
     // Convierte un entero a byte string de longitud n en big-endian
 
     ByteVector S(n, 0);  // Byte string de longitud n
@@ -462,7 +456,7 @@ uint32_t ADRS::getTreeIndex() const {
     return bytesToUint32(ByteVector(addr.begin() + 28, addr.begin() + 32));
 }
 
-// Algorithm 1: gen_len2
+// Algoritmo 1: gen_len2
 uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
     uint64_t w = 1ULL << lg_w;
     uint64_t len1 = (8 * n + lg_w - 1) / lg_w;
@@ -479,7 +473,7 @@ uint32_t gen_len2(uint64_t n, uint64_t lg_w) {
 }
 
 
-// Algorithm 2: toInt
+// Algoritmo 2: toInt
 uint64_t toInt64(const ByteVector& X, uint64_t n) {
     if (X.size() < n) {
         throw std::invalid_argument("Input array is too short");
@@ -498,7 +492,7 @@ uint64_t toInt64(const ByteVector& X, uint64_t n) {
     return total;
 }
 
-// Algorithm 3: toByte helper function
+// Algoritmo 3: toByte helper function
 uint8_t divmod256(ByteVector& num) {
     uint16_t carry = 0;
     for (size_t i = num.size(); i-- > 0;) {
@@ -519,7 +513,7 @@ ByteVector toByte(const ByteVector& X, uint64_t n) {
     return S;
 }
 
-// Algorithm 4: base_2b
+// Algoritmo 4: base_2b
 std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len) {
     if (b <= 0 || b > 31) {
         throw std::invalid_argument("b must be between 1 and 31");
@@ -555,7 +549,7 @@ std::vector<uint32_t> base_2b(const ByteVector& X, int b, int out_len) {
     return baseb;
 }
 
-// Algorithm 5: chain
+// Algoritmo 5: chain
 ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed, ADRS& adrs) {
     if (s == 0) {
         return X;
@@ -575,7 +569,7 @@ ByteVector chain(ByteVector X, uint32_t i, uint32_t s, const ByteVector& PKseed,
     return temp;
 }
 
-// Algorithm 6: wots_pkGen
+// Algoritmo 6: wots_pkGen
 ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -618,7 +612,7 @@ ByteVector wots_pkGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& 
     return pk;
 }
 
-// Algorithm 7: wots_sign
+// Algoritmo 7: wots_sign
 ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed, ADRS adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -647,7 +641,7 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
     uint32_t shift_amount = (8 - ((len2 * lg_w) % 8)) % 8;
     csum = csum << shift_amount;
 
-    // ✅ LÍNEA 7: msg ← msg || base_2^b(toByte(csum, ⌈len_2·lg_w/8⌉), lg_w, len_2)
+    // LÍNEA 7: msg ← msg || base_2^b(toByte(csum, ⌈len_2·lg_w/8⌉), lg_w, len_2)
     size_t csum_byte_len = (len2 * lg_w + 7) / 8;
     ByteVector csum_bytes = toByte(static_cast<uint64_t>(csum), csum_byte_len);
     std::vector<uint32_t> csum_base_w = base_2b(csum_bytes, lg_w, static_cast<int>(len2));
@@ -690,11 +684,11 @@ ByteVector wots_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVe
         std::copy(sig_part.begin(), sig_part.end(), sig.begin() + i * n);
     }
 
-    // ✅ LÍNEA 17: return sig
+    // LÍNEA 17: return sig
     return sig;
 }
 
-// Algorithm 8: wots_pkFromSig
+// Algoritmo 8: wots_pkFromSig
 ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -712,22 +706,22 @@ ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const Byte
         throw std::invalid_argument("Incorrect signature size for wots_pkFromSig");
     }
 
-    // ✅ LÍNEA 1: csum ← 0
+    // LÍNEA 1: csum ← 0
     uint32_t csum = 0;
 
-    // ✅ LÍNEA 2: msg ← base_2^b(M, lg_w, len_1)
+    // LÍNEA 2: msg ← base_2^b(M, lg_w, len_1)
     std::vector<uint32_t> msg_base_w = base_2b(M, lg_w, static_cast<int>(len1));
 
-    // ✅ LÍNEAS 3-5: Compute checksum
+    // LÍNEAS 3-5: Checksum
     for (size_t i = 0; i < len1; i++) {
         csum += w - 1 - msg_base_w[i];
     }
 
-    // ✅ LÍNEA 6: csum ← csum << ((8 - ((len_2 · lg_w) mod 8)) mod 8)
+    // LÍNEA 6: csum ← csum << ((8 - ((len_2 · lg_w) mod 8)) mod 8)
     uint32_t shift_amount = (8 - ((len2 * lg_w) % 8)) % 8;
     csum = csum << shift_amount;  // ← SIN operación módulo adicional
 
-    // ✅ LÍNEA 7: msg ← msg || base_2^b(toByte(csum, ⌈len_2·lg_w/8⌉), lg_w, len_2)
+    // LÍNEA 7: msg ← msg || base_2^b(toByte(csum, ⌈len_2·lg_w/8⌉), lg_w, len_2)
     size_t csum_byte_len = (len2 * lg_w + 7) / 8;
     ByteVector csum_bytes = toByte(static_cast<uint64_t>(csum), csum_byte_len);
     std::vector<uint32_t> csum_base_w = base_2b(csum_bytes, lg_w, static_cast<int>(len2));
@@ -741,55 +735,55 @@ ByteVector wots_pkFromSig(const ByteVector& sig, const ByteVector& M, const Byte
         msg_complete[len1 + i] = csum_base_w[i];
     }
 
-    // ✅ LÍNEAS 8-11: Main verification loop
+    // LÍNEAS 8-11: Principal loop de verificacion
     std::vector<ByteVector> tmp(len);
 
     for (size_t i = 0; i < len; i++) {
         // Extraer sig[i] del buffer de firma
         ByteVector sig_i(sig.begin() + i * n, sig.begin() + (i + 1) * n);
 
-        // ✅ LÍNEA 9: ADRS.setChainAddress(i) - usar ADRS directamente
+        // LÍNEA 9: ADRS.setChainAddress(i) - usar ADRS directamente
         adrs.setChainAddress(static_cast<uint32_t>(i));
 
-        // ✅ LÍNEA 10: tmp[i] ← chain(sig[i], msg[i], w - 1 - msg[i], PK.seed, ADRS)
+        // LÍNEA 10: tmp[i] ← chain(sig[i], msg[i], w - 1 - msg[i], PK.seed, ADRS)
         tmp[i] = chain(sig_i, msg_complete[i], w - 1 - msg_complete[i], PKseed, adrs);
     }
 
-    // ✅ LÍNEAS 12-14: Setup wotspkADRS
+    // LÍNEAS 12-14: Setup wotspkADRS
     ADRS wotspkADRS = adrs;  // Copia del ADRS actual
     wotspkADRS.setTypeAndClear(WOTS_PK);
     wotspkADRS.setKeyPairAddress(adrs.getKeyPairAddress());
 
-    // ✅ LÍNEA 15: pk_sig ← T_len(PK.seed, wotspkADRS, tmp)
+    // LÍNEA 15: pk_sig ← T_len(PK.seed, wotspkADRS, tmp)
     ByteVector pk(n);
     if (!T_l(PKseed, wotspkADRS.toVector(), tmp, pk)) {
         throw std::runtime_error("Error in T_l during wots_pkFromSig");
     }
 
-    // ✅ LÍNEA 16: return pk_sig
+    // LÍNEA 16: return pk_sig
     return pk;
 }
 
-// Algorithm 9: xmss_node
+// Algoritmo 9: xmss_node
 ByteVector xmss_node(const ByteVector& SKseed, uint64_t i, uint32_t z, const ByteVector& PKseed, ADRS& adrs) {
 
     ByteVector node;
     if (z == 0) {
-        // ✅ LÍNEAS 2-4: Caso base - generar hoja WOTS
+        // LÍNEAS 2-4: Caso base - generar hoja WOTS
         adrs.setTypeAndClear(WOTS_HASH);
         adrs.setKeyPairAddress(i);
         node = wots_pkGen(SKseed, PKseed, adrs);
     } else {
-        // ✅ LÍNEAS 6-7: Llamadas recursivas
+        // LÍNEAS 6-7: Llamadas recursivas
         ByteVector lnode = xmss_node(SKseed, 2*i, z-1, PKseed, adrs);
         ByteVector rnode = xmss_node(SKseed, 2*i+1, z-1, PKseed, adrs);
 
-        // ✅ LÍNEAS 8-10: Configurar ADRS para nodo interno
+        // LÍNEAS 8-10: Configurar ADRS para nodo interno
         adrs.setTypeAndClear(TREE);  // O TREE según definición de constantes
         adrs.setTreeHeight(z);
         adrs.setTreeIndex(i);
 
-        // ✅ LÍNEA 11: H(PK.seed, ADRS, lnode || rnode)
+        // LÍNEA 11: H(PK.seed, ADRS, lnode || rnode)
         ByteVector combined;
         combined.reserve(lnode.size() + rnode.size());
         combined.insert(combined.end(), lnode.begin(), lnode.end());
@@ -803,7 +797,7 @@ ByteVector xmss_node(const ByteVector& SKseed, uint64_t i, uint32_t z, const Byt
     return node;
 }
 
-// Algorithm 10: xmss_sign
+// Algoritmo 10: xmss_sign
 ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx,
                      const ByteVector& PKseed, ADRS &adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -840,7 +834,7 @@ ByteVector xmss_sign(const ByteVector& M, const ByteVector& SKseed, uint32_t idx
     return SIG_XMSS;
 }
 
-// Algorithm 11: xmss_pkFromSig
+// Algoritmo 11: xmss_pkFromSig
 ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
                           const ByteVector& M, const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -906,7 +900,7 @@ ByteVector xmss_pkFromSig(uint32_t idx, const ByteVector& SIG_XMSS,
     return node[0];
 }
 
-// Algorithm 12: ht_sign
+// Algoritmo 12: ht_sign
 ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVector& PKseed,
                    uint64_t idx_tree, uint64_t idx_leaf) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -942,7 +936,7 @@ ByteVector ht_sign(const ByteVector& M, const ByteVector& SKseed, const ByteVect
     return SIG_HT;
 }
 
-// Algorithm 13: ht_verify
+// Algoritmo 13: ht_verify
 bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& PKseed,
                uint64_t idx_tree, uint64_t idx_leaf, const ByteVector& PKroot) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -983,7 +977,7 @@ bool ht_verify(const ByteVector& M, const ByteVector& SIG_HT, const ByteVector& 
     return node == PKroot;
 }
 
-// Algorithm 14: fors_skGen
+// Algoritmo 14: fors_skGen
 ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& adrs, uint32_t idx) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -1005,7 +999,7 @@ ByteVector fors_skGen(const ByteVector& SKseed, const ByteVector& PKseed, ADRS& 
     return sk;
 }
 
-// Algorithm 15: fors_node
+// Algoritmo 15: fors_node
 ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
                      const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -1043,7 +1037,7 @@ ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
     return node;
 }
 
-// ✅ IMPLEMENTACIÓN CORREGIDA:
+// Algoritmo 16: forst_sign
 ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
                                const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -1056,20 +1050,20 @@ ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
     const uint32_t a = params->a;
     const uint32_t t = 1 << a;
 
-    // ✅ LÍNEA 1: Inicializar SIG_FORS
+    // Inicializar SIG_FORS
     ByteVector SIG_FORS;
 
-    // ✅ LÍNEA 2: Convertir md a índices
+    // Convertir md a índices
     std::vector<uint32_t> indices = base_2b(md, static_cast<int>(a), static_cast<int>(k));
 
-    // ✅ LÍNEAS 3-10: Loop principal
+    //  Loop principal
     for (uint32_t i = 0; i < k; i++) {
-        // ✅ LÍNEA 4: Agregar sk para árbol i
+        // Agregar sk para árbol i
         uint32_t leaf_index = i * t + indices[i];
         ByteVector sk = fors_skGen(SKseed, PKseed, adrs, leaf_index);
         SIG_FORS.insert(SIG_FORS.end(), sk.begin(), sk.end());
 
-        // ✅ LÍNEAS 5-8: Computar camino de autenticación para árbol i
+        // Computar camino de autenticación para árbol i
         std::vector<ByteVector> AUTH_i(a);  // AUTH para este árbol específico
 
         for (uint32_t j = 0; j < a; j++) {
@@ -1078,17 +1072,17 @@ ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
             AUTH_i[j] = fors_node(SKseed, node_index, j, PKseed, adrs);
         }
 
-        // ✅ LÍNEA 9: Concatenar AUTH inmediatamente después de sk
+        //  Concatenar AUTH inmediatamente después de sk
         for (const auto& auth_node : AUTH_i) {
             SIG_FORS.insert(SIG_FORS.end(), auth_node.begin(), auth_node.end());
         }
     }
 
-    // ✅ LÍNEA 11: Retornar firma completa
+    //  Retornar firma completa
     return SIG_FORS;
 }
 
-// Algorithm 17: fors_pkFromSig
+// Algoritmo 17: fors_pkFromSig
 ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
                           const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -1172,7 +1166,7 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
     return pk;
 }
 
-// Algorithm 18: slh_keygen_internal
+// Algoritmo 18: slh_keygen_internal
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen_internal(
         const ByteVector& SKseed, const ByteVector& SKprf, const ByteVector& PKseed) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
@@ -1218,28 +1212,28 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     const size_t tree_idx_bits = h - (h / d);
     const size_t leaf_idx_bits = h / d;
 
-    // ✅ LÍNEA 1: ADRS ← toByte(0, 32)
+    // ADRS ← toByte(0, 32)
     ADRS adrs;
 
-    // ✅ LÍNEA 2: opt_rand ← addrnd
+    // opt_rand ← addrnd
     ByteVector opt_rand = addrnd.empty() ? privateKey.pkSeed : addrnd;
 
-    // ✅ LÍNEA 3: R ← PRF_msg(SK.prf, opt_rand, M)
+    // LÍNEA 3: R ← PRF_msg(SK.prf, opt_rand, M)
     ByteVector R;
     if (!PRF_msg(privateKey.prf, opt_rand, M, R)) {
         throw std::runtime_error("Error in PRF_msg");
     }
 
-    // ✅ LÍNEA 4: SIG ← R (siguiendo pseudocódigo literalmente)
+    // LÍNEA 4: SIG ← R (siguiendo pseudocódigo literalmente)
     ByteVector SIG = R;
 
-    // ✅ LÍNEA 5: digest ← H_msg(R, PK.seed, PK.root, M)
+    // LÍNEA 5: digest ← H_msg(R, PK.seed, PK.root, M)
     ByteVector digest;
     if (!H_msg(R, privateKey.pkSeed, privateKey.pkRoot, M, digest)) {
         throw std::runtime_error("Error in H_msg");
     }
 
-    // ✅ LÍNEAS 6-8: Extraer md, tmp_idx_tree, tmp_idx_leaf
+    // LÍNEAS 6-8: Extraer md, tmp_idx_tree, tmp_idx_leaf
     const size_t md_bits = k * a;
     const size_t md_bytes = (md_bits + 7) / 8;
     ByteVector md(digest.begin(), digest.begin() + md_bytes);
@@ -1255,7 +1249,7 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    // ✅ LÍNEAS 9-10: Convertir índices CON FUNCIONES OPTIMIZADAS
+    // LÍNEAS 9-10: Convertir índices CON FUNCIONES OPTIMIZADAS
 
     // OPCIÓN 1: Replicar comportamiento exacto (limitando bytes)
     size_t tree_bytes_to_read = std::min(tmp_idx_tree.size(), size_t(8));
@@ -1264,33 +1258,33 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
         idx_tree &= ((1ULL << tree_idx_bits) - 1);
     }
 
-    size_t leaf_bytes_to_read = std::min(tmp_idx_leaf.size(), size_t(8));  // ✅ CAMBIO: también 8 para uint64_t
-    uint64_t idx_leaf = toInt64(tmp_idx_leaf, leaf_bytes_to_read);  // ✅ CAMBIO: uint64_t unificado
-    if (leaf_idx_bits < 64) {  // ✅ CAMBIO: 64 bits
+    size_t leaf_bytes_to_read = std::min(tmp_idx_leaf.size(), size_t(8));
+    uint64_t idx_leaf = toInt64(tmp_idx_leaf, leaf_bytes_to_read);
+    if (leaf_idx_bits < 64) {
         idx_leaf &= ((1ULL << leaf_idx_bits) - 1);
     }
 
-    // ✅ LÍNEAS 11-13: Setup ADRS
+    // LÍNEAS 11-13: Setup ADRS
     adrs.setTreeAddress(idx_tree);
     adrs.setTypeAndClear(FORS_TREE);
-    adrs.setKeyPairAddress(idx_leaf);  // ✅ Ahora idx_leaf es uint64_t
+    adrs.setKeyPairAddress(idx_leaf);
 
-    // ✅ LÍNEA 14: SIG_FORS ← fors_sign(...)
+    //  LÍNEA 14: SIG_FORS ← fors_sign(...)
     ByteVector SIG_FORS = fors_sign(md, privateKey.seed, privateKey.pkSeed, adrs);
 
-    // ✅ LÍNEA 15: SIG ← SIG || SIG_FORS (concatenación explícita)
+    //  LÍNEA 15: SIG ← SIG || SIG_FORS (concatenación explícita)
     SIG.insert(SIG.end(), SIG_FORS.begin(), SIG_FORS.end());
 
-    // ✅ LÍNEA 16: PK_FORS ← fors_pkFromSig(...)
+    // LÍNEA 16: PK_FORS ← fors_pkFromSig(...)
     ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, privateKey.pkSeed, adrs);
 
-    // ✅ LÍNEA 17: SIG_HT ← ht_sign(...) - Ahora ambos parámetros son uint64_t
+    // LÍNEA 17: SIG_HT ← ht_sign(...) - Ahora ambos parámetros son uint64_t
     ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree, idx_leaf);
 
-    // ✅ LÍNEA 18: SIG ← SIG || SIG_HT (concatenación explícita)
+    // LÍNEA 18: SIG ← SIG || SIG_HT (concatenación explícita)
     SIG.insert(SIG.end(), SIG_HT.begin(), SIG_HT.end());
 
-    // ✅ LÍNEA 19: return SIG
+    // LÍNEA 19: return SIG
     // Convertir ByteVector concatenado a estructura
     SLH_DSA_Signature signature;
     signature.randomness = R;
@@ -1302,7 +1296,7 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
 
 
 
-// Algorithm 20: slh_verify_internal
+// Algoritmo 20: slh_verify_internal
 bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_DSA_PublicKey& PK) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -1371,7 +1365,7 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
     return ht_verify(PK_FORS, SIG_HT, PK.seed, idx_tree, idx_leaf, PK.root);
 }
 
-// Algorithm 21: slh_keygen
+// Algoritmo 21: slh_keygen
 std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen() {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
@@ -1393,7 +1387,7 @@ std::pair<SLH_DSA_PrivateKey, SLH_DSA_PublicKey> slh_keygen() {
     return slh_keygen_internal(SKseed, SKprf, PKseed);
 }
 
-// Algorithm 22: slh_sign
+// Algoritmo 22: slh_sign
 ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_PrivateKey& SK) {
     if (ctx.size() > 255) {
         throw std::invalid_argument("Context string is too long (must be <= 255 bytes)");
@@ -1411,7 +1405,7 @@ ByteVector slh_sign(const ByteVector& M, const ByteVector& ctx, const SLH_DSA_Pr
     return signature.toBytes();
 }
 
-// Algorithm 24: slh_verify
+// Algoritmo 24: slh_verify
 bool slh_verify(const ByteVector& M, const ByteVector& SIG, const ByteVector& ctx, const SLH_DSA_PublicKey& PK) {
     if (ctx.size() > 255) {
         return false;

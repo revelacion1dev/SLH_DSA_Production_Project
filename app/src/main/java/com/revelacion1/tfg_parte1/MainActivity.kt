@@ -1,6 +1,9 @@
 package com.revelacion1.tfg_parte1
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues.TAG
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -39,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     // Estado mejorado
     private var currentKeys: Array<ByteArray>? = null  // [privateKey, publicKey] - orden interno
     private var currentPublicKeyHex: String? = null   // Clave pública en hex para fácil acceso
+    private var currentPrivateKeyHex: String? = null  // NUEVA: Clave privada en hex
     private var currentAlgorithm = 0
     private lateinit var fipsTester: FIPS205Tester
     private lateinit var nistVectorTester: NISTVectorTester
@@ -48,9 +52,7 @@ class MainActivity : AppCompatActivity() {
 
     // Algoritmos disponibles
     private val algorithms = arrayOf(
-        "SHA2-128s", "SHAKE-128s", "SHA2-128f", "SHAKE-128f",
-        "SHA2-192s", "SHAKE-192s", "SHA2-192f", "SHAKE-192f",
-        "SHA2-256s", "SHAKE-256s", "SHA2-256f", "SHAKE-256f"
+        "SHAKE-128s", "SHAKE-128f", "SHAKE-192s", "SHAKE-192f", "SHAKE-256s", "SHAKE-256f"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -203,6 +205,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSign).setOnClickListener { signMessage() }
         findViewById<Button>(R.id.btnClear).setOnClickListener { clearResults() }
 
+        // NUEVO: Listener para copiar claves
+        findViewById<Button>(R.id.btnCopyKeys).setOnClickListener { copyKeysToClipboard() }
+
         btnNistTest.setOnClickListener {
             if (!isTestRunning.get()) runNISTVectorTest()
         }
@@ -215,6 +220,7 @@ class MainActivity : AppCompatActivity() {
                 currentAlgorithm = position
                 currentKeys = null
                 currentPublicKeyHex = null
+                currentPrivateKeyHex = null
                 updateKeyInfo()
                 btnSign.isEnabled = false
             }
@@ -316,7 +322,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * FUNCIÓN MEJORADA: Generación de claves con mejor gestión
+     * FUNCIÓN MODIFICADA: Generación de claves con claves completas visibles
      */
     private fun generateKeys() {
         log("🔑 Generando claves ${algorithms[currentAlgorithm]}...\n")
@@ -332,7 +338,8 @@ class MainActivity : AppCompatActivity() {
 
                 // Guardar claves (orden interno: [privateKey, publicKey] para compatibilidad)
                 currentKeys = arrayOf(keyPair[1], keyPair[0])  // [privateKey, publicKey]
-                currentPublicKeyHex = byteArrayToHexString(keyPair[0])  // Solo la pública en hex
+                currentPublicKeyHex = byteArrayToHexString(keyPair[0])   // Pública en hex
+                currentPrivateKeyHex = byteArrayToHexString(keyPair[1])  // NUEVA: Privada en hex
 
                 runOnUiThread {
                     log("✅ Claves generadas en ${time}ms\n")
@@ -340,7 +347,7 @@ class MainActivity : AppCompatActivity() {
                     log("Clave pública: ${keyPair[0].size} bytes\n")
                     log("Clave privada: ${keyPair[1].size} bytes\n\n")
 
-                    // 🆕 LOGCAT: Información de generación de claves
+                    // LOGCAT: Información completa incluyendo clave privada
                     Log.i(TAG_KEYGEN, "=".repeat(60))
                     Log.i(TAG_KEYGEN, "🔑 GENERACIÓN DE CLAVES SLH-DSA")
                     Log.i(TAG_KEYGEN, "Algoritmo: ${algorithms[currentAlgorithm]}")
@@ -351,7 +358,10 @@ class MainActivity : AppCompatActivity() {
                     Log.i(TAG_KEYGEN, "🔓 CLAVE PÚBLICA (HEX):")
                     Log.i(TAG_KEYGEN, currentPublicKeyHex!!)
                     Log.i(TAG_KEYGEN, "-".repeat(40))
-                    Log.i(TAG_KEYGEN, "⚠️  CLAVE PRIVADA: ALMACENADA INTERNAMENTE (NO EXPUESTA)")
+                    Log.i(TAG_KEYGEN, "🔐 CLAVE PRIVADA (HEX):")
+                    Log.i(TAG_KEYGEN, currentPrivateKeyHex!!)
+                    Log.i(TAG_KEYGEN, "-".repeat(40))
+                    Log.i(TAG_KEYGEN, "⚠️  NOTA: Claves expuestas solo para pruebas de usabilidad")
                     Log.i(TAG_KEYGEN, "=".repeat(60))
 
                     // Auto-rellenar el campo de clave pública para verificación
@@ -486,7 +496,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * FUNCIÓN MEJORADA: Actualizar información de claves
+     * FUNCIÓN MODIFICADA: Mostrar ambas claves completas
      */
     private fun updateKeyInfo() {
         val keys = currentKeys
@@ -494,13 +504,11 @@ class MainActivity : AppCompatActivity() {
             layoutKeyInfo.visibility = View.VISIBLE
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
-            // Mostrar información de la clave pública (la que se expone)
-            tvPublicKeyInfo.text = """🔓 Clave Pública (${keys[1].size} bytes):
-${currentPublicKeyHex?.take(64)}${if ((currentPublicKeyHex?.length ?: 0) > 64) "..." else ""}"""
+            // Mostrar clave pública completa
+            tvPublicKeyInfo.text = currentPublicKeyHex?.chunked(64)?.joinToString("\n") ?: "Error cargando clave"
 
-            // Mostrar información básica de la clave privada (sin exponer el contenido)
-            tvPrivateKeyInfo.text = """🔐 Clave Privada (${keys[0].size} bytes):
-Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
+            // Mostrar clave privada completa
+            tvPrivateKeyInfo.text = "${currentPrivateKeyHex?.chunked(64)?.joinToString("\n") ?: "Error cargando clave"}\n\n⚠️ Generada: $timestamp | ${algorithms[currentAlgorithm]}"
 
         } else {
             layoutKeyInfo.visibility = View.GONE
@@ -508,16 +516,38 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
     }
 
     /**
-     * NUEVA FUNCIÓN: Limpiar resultados mejorado
+     * NUEVA FUNCIÓN: Copiar claves al portapapeles
+     */
+    private fun copyKeysToClipboard() {
+        if (currentPublicKeyHex != null && currentPrivateKeyHex != null) {
+            val clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clipData = ClipData.newPlainText("SLH-DSA Keys",
+                "CLAVE_PUBLICA=$currentPublicKeyHex\nCLAVE_PRIVADA=$currentPrivateKeyHex")
+            clipboardManager.setPrimaryClip(clipData)
+
+            log("📋 Claves copiadas al portapapeles\n")
+            Toast.makeText(this, "Claves copiadas al portapapeles", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * FUNCIÓN MODIFICADA: Limpiar también las claves hex
      */
     private fun clearResults() {
         tvResults.text = "📝 Resultados limpiados - Listo para nuevos tests.\n\n"
 
-        // Limpiar también los campos de verificación
+        // Limpiar también los campos de verificación y claves
         etSignature.setText("")
         etOriginalMessage.setText("")
         etPublicKey.setText("")
         layoutVerifyResult.visibility = View.GONE
+
+        // Limpiar claves hex
+        currentPublicKeyHex = null
+        currentPrivateKeyHex = null
+        currentKeys = null
+        updateKeyInfo()
+        btnSign.isEnabled = false
     }
 
     // FUNCIONES AUXILIARES NUEVAS
@@ -551,7 +581,7 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
         log("=".repeat(60) + "\n\n")
 
         // Usar coroutines con Dispatchers.IO para operaciones intensivas
-        lifecycleScope.launch(Dispatchers.Main) {
+        lifecycleScope.launch(Dispatchers.Default) {
             val startTime = System.currentTimeMillis()
 
             try {
@@ -778,29 +808,6 @@ Generada: $timestamp | Algoritmo: ${algorithms[currentAlgorithm]}"""
         // 📱 LOGCAT: Reflejar todo lo que aparece en la UI
         Log.i(TAG, text.replace("\n", ""))
     }
-
-    /**
-     * 🆕 FUNCIÓN: Mostrar instrucciones para acceder a logcat
-     */
-    private fun showLogcatInstructions() {
-        log("\n📱 INSTRUCCIONES LOGCAT:\n")
-        log("   Para ver información completa en logcat:\n")
-        log("   • Generación claves: adb logcat | grep SLH_DSA_KEYGEN\n")
-        log("   • Firma completa: adb logcat | grep SLH_DSA_SIGNATURE\n")
-        log("   • Verificación: adb logcat | grep SLH_DSA_VERIFY\n")
-        log("   • Todo junto: adb logcat | grep 'SLH_DSA_'\n\n")
-
-        // También enviarlo al logcat
-        Log.i(TAG_INFO, "=".repeat(50))
-        Log.i(TAG_INFO, "📱 INSTRUCCIONES DE USO LOGCAT")
-        Log.i(TAG_INFO, "Para filtrar logs específicos:")
-        Log.i(TAG_INFO, "  adb logcat | grep SLH_DSA_KEYGEN")
-        Log.i(TAG_INFO, "  adb logcat | grep SLH_DSA_SIGNATURE")
-        Log.i(TAG_INFO, "  adb logcat | grep SLH_DSA_VERIFY")
-        Log.i(TAG_INFO, "  adb logcat | grep 'SLH_DSA_'")
-        Log.i(TAG_INFO, "=".repeat(50))
-    }
-
     companion object {
         // Tags para logcat
         private const val TAG_KEYGEN = "SLH_DSA_KEYGEN"
