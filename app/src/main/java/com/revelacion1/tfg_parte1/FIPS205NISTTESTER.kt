@@ -455,18 +455,19 @@ class NISTVectorTester(private val context: android.content.Context) {
      */
     private fun mapParameterSetToConfig(parameterSet: String): Int {
         return when (parameterSet) {
-            "SLH-DSA-SHAKE-128s" -> 1
-            "SLH-DSA-SHAKE-128f" -> 3
-            "SLH-DSA-SHAKE-192s" -> 5
-            "SLH-DSA-SHAKE-192f" -> 7
-            "SLH-DSA-SHAKE-256s" -> 9
-            "SLH-DSA-SHAKE-256f" -> 11
+            "SLH-DSA-SHAKE-128s" -> 0
+            "SLH-DSA-SHAKE-128f" -> 1
+            "SLH-DSA-SHAKE-192s" -> 2
+            "SLH-DSA-SHAKE-192f" -> 3
+            "SLH-DSA-SHAKE-256s" -> 4
+            "SLH-DSA-SHAKE-256f" -> 5
             else -> {
                 log("⚠️ Parameter set no soportado (solo SHAKE-128/256): $parameterSet\n")
                 -1
             }
         }
     }
+
 
     /**
      * Valida si el parameter set es soportado

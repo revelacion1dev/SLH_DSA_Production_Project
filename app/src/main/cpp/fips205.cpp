@@ -4,13 +4,159 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <stdexcept>
-#include <cstring>  //Todo : Revisar
-
+#include <cstring>
+#include <cstdint>
 // Thread-local optimization variables
 namespace {
     thread_local EVP_MD_CTX* g_quick_shake_ctx = nullptr;
     thread_local bool g_quick_ctx_initialized = false;
 }
+
+//
+class uint128_t {
+private:
+    uint64_t low_;
+    uint64_t high_;
+
+public:
+    // Constructores
+    uint128_t() : low_(0), high_(0) {}
+
+    explicit uint128_t(uint64_t val) : low_(val), high_(0) {}
+
+    explicit uint128_t(uint32_t val) : low_(static_cast<uint64_t>(val)), high_(0) {}
+
+    uint128_t(uint64_t high, uint64_t low) : low_(low), high_(high) {}
+
+    // Getters
+    uint64_t low() const { return low_; }
+    uint64_t high() const { return high_; }
+
+    uint128_t operator+(const uint128_t& other) const {
+        uint64_t result_low = low_ + other.low_;
+        uint64_t carry = (result_low < low_) ? 1 : 0;
+        uint64_t result_high = high_ + other.high_ + carry;
+        return uint128_t(result_high, result_low);
+    }
+
+    uint128_t operator*(const uint128_t& other) const {
+        // Para simplificar, solo el producto de la parte baja
+        // (suficiente para nuestros casos de uso)
+        return (*this) * other.low_;
+    }
+
+    uint128_t operator*(uint64_t rhs) const {
+        // Multiplicación 64x64 -> 128 usando partes de 32 bits
+        uint64_t a_low = low_ & 0xFFFFFFFFULL;
+        uint64_t a_high = low_ >> 32;
+        uint64_t b_low = rhs & 0xFFFFFFFFULL;
+        uint64_t b_high = rhs >> 32;
+
+        uint64_t p0 = a_low * b_low;
+        uint64_t p1 = a_low * b_high;
+        uint64_t p2 = a_high * b_low;
+        uint64_t p3 = a_high * b_high;
+
+        uint64_t middle = p1 + p2;
+        uint64_t middle_carry = (middle < p1) ? 1 : 0;
+
+        uint64_t result_low = p0 + (middle << 32);
+        uint64_t low_carry = (result_low < p0) ? 1 : 0;
+
+        uint64_t result_high = p3 + (middle >> 32) + middle_carry +
+                               (high_ * rhs) + low_carry;
+
+        return uint128_t(result_high, result_low);
+    }
+
+    uint128_t operator<<(int shift) const {
+        if (shift >= 128 || shift < 0) return uint128_t();
+        if (shift == 0) return *this;
+
+        if (shift >= 64) {
+            return uint128_t(low_ << (shift - 64), 0);
+        } else {
+            uint64_t new_high = (high_ << shift) | (low_ >> (64 - shift));
+            uint64_t new_low = low_ << shift;
+            return uint128_t(new_high, new_low);
+        }
+    }
+
+    uint128_t operator>>(int shift) const {
+        if (shift >= 128 || shift < 0) return uint128_t();
+        if (shift == 0) return *this;
+
+        if (shift >= 64) {
+            return uint128_t(0, high_ >> (shift - 64));
+        } else {
+            uint64_t new_low = (low_ >> shift) | (high_ << (64 - shift));
+            uint64_t new_high = high_ >> shift;
+            return uint128_t(new_high, new_low);
+        }
+    }
+
+    uint128_t operator&(const uint128_t& mask) const {
+        return uint128_t(high_ & mask.high_, low_ & mask.low_);
+    }
+
+    uint128_t operator^(const uint128_t& other) const {
+        return uint128_t(high_ ^ other.high_, low_ ^ other.low_);
+    }
+
+    uint128_t operator^(uint64_t val) const {
+        return uint128_t(high_, low_ ^ val);
+    }
+
+    bool operator==(const uint128_t& other) const {
+        return low_ == other.low_ && high_ == other.high_;
+    }
+
+    bool operator!=(const uint128_t& other) const {
+        return !(*this == other);
+    }
+
+    explicit operator uint64_t() const {
+        return low_;
+    }
+
+    explicit operator uint32_t() const {
+        return static_cast<uint32_t>(low_);
+    }
+
+    static uint128_t create_mask(int bits) {
+        if (bits <= 0) return uint128_t();
+        if (bits >= 128) return uint128_t(0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL);
+
+        if (bits <= 64) {
+            uint64_t mask = (bits == 64) ? 0xFFFFFFFFFFFFFFFFULL : ((1ULL << bits) - 1);
+            return uint128_t(0, mask);
+        } else {
+            uint64_t high_mask = (1ULL << (bits - 64)) - 1;
+            return uint128_t(high_mask, 0xFFFFFFFFFFFFFFFFULL);
+        }
+    }
+};
+inline uint128_t operator*(uint64_t lhs, const uint128_t& rhs) {
+    return rhs * lhs;
+}
+uint128_t toInt128(const ByteVector& X, uint64_t n) {
+    if (X.size() < n || n == 0) {
+        return uint128_t();
+    }
+
+    uint128_t total;
+    for (size_t i = 0; i < n && i < 16; ++i) {
+        total = (total << 8) + uint128_t(static_cast<uint64_t>(X[i]));
+    }
+
+    return total;
+}
+
+uint128_t create_bit_mask_128(size_t bits) {
+    return uint128_t::create_mask(static_cast<int>(bits));
+}
+
+
 
 // Context cleanup function
 void cleanup_quick_shake_context() {
@@ -351,7 +497,6 @@ uint32_t toInt32(const ByteVector& X, uint64_t n) {
     }
     uint32_t total = 0;
     for (size_t i = 0; i < n; ++i) {
-        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
         total = (total << 8) | static_cast<uint32_t>(X[i]);
     }
 
@@ -414,7 +559,7 @@ void ADRS::setLayerAddress(uint32_t layer) {
 
 void ADRS::setTreeAddress(uint64_t tree) {
     ByteVector tree_bytes = toByte(tree, 12);
-    std::copy(tree_bytes.begin(), tree_bytes.end(), addr.begin() + 4);  // ✅ Correcto
+    std::copy(tree_bytes.begin(), tree_bytes.end(), addr.begin() + 4);
 }
 
 void ADRS::setTypeAndClear(uint32_t type) {
@@ -485,7 +630,6 @@ uint64_t toInt64(const ByteVector& X, uint64_t n) {
 
     uint64_t total = 0;
     for (size_t i = 0; i < n; ++i) {
-        // ✅ OPTIMIZACIÓN: Usar bit shifting en lugar de multiplicación
         total = (total << 8) | static_cast<uint64_t>(X[i]);
     }
 
@@ -1039,7 +1183,7 @@ ByteVector fors_node(const ByteVector& SKseed, uint32_t i, uint32_t z,
 
 // Algoritmo 16: forst_sign
 ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
-                               const ByteVector& PKseed, ADRS& adrs) {
+                     const ByteVector& PKseed, ADRS& adrs) {
     const SLH_DSA_Params* params = FIPS205ConfigManager::getCurrentParams();
     if (!params) {
         throw std::runtime_error("SLH_DSA_Params not initialized.");
@@ -1048,39 +1192,44 @@ ByteVector fors_sign(const ByteVector& md, const ByteVector& SKseed,
     const size_t n = params->n;
     const uint32_t k = params->k;
     const uint32_t a = params->a;
-    const uint32_t t = 1 << a;
+    const uint128_t t = uint128_t(static_cast<uint64_t>(1)) << a;
 
-    // Inicializar SIG_FORS
     ByteVector SIG_FORS;
-
-    // Convertir md a índices
     std::vector<uint32_t> indices = base_2b(md, static_cast<int>(a), static_cast<int>(k));
 
-    //  Loop principal
     for (uint32_t i = 0; i < k; i++) {
-        // Agregar sk para árbol i
-        uint32_t leaf_index = i * t + indices[i];
+
+        uint128_t i_128 = uint128_t(static_cast<uint64_t>(i));
+        uint128_t indices_i_128 = uint128_t(static_cast<uint64_t>(indices[i]));
+        uint128_t leaf_index_128 = i_128 * t + indices_i_128;
+        uint32_t leaf_index = static_cast<uint32_t>(leaf_index_128);
+
         ByteVector sk = fors_skGen(SKseed, PKseed, adrs, leaf_index);
         SIG_FORS.insert(SIG_FORS.end(), sk.begin(), sk.end());
 
-        // Computar camino de autenticación para árbol i
-        std::vector<ByteVector> AUTH_i(a);  // AUTH para este árbol específico
+        std::vector<ByteVector> AUTH_i(a);
 
         for (uint32_t j = 0; j < a; j++) {
-            uint32_t s = (indices[i] >> j) ^ 1;
-            uint32_t node_index = i * (t >> j) + s;
+
+            uint128_t indices_i_shifted = uint128_t(static_cast<uint64_t>(indices[i])) >> j;
+            uint128_t s = indices_i_shifted ^ uint128_t(static_cast<uint64_t>(1));
+
+            uint128_t t_shifted = t >> j;
+            uint128_t node_index_128 = i_128 * t_shifted + s;
+            uint32_t node_index = static_cast<uint32_t>(node_index_128);
+
             AUTH_i[j] = fors_node(SKseed, node_index, j, PKseed, adrs);
         }
 
-        //  Concatenar AUTH inmediatamente después de sk
         for (const auto& auth_node : AUTH_i) {
             SIG_FORS.insert(SIG_FORS.end(), auth_node.begin(), auth_node.end());
         }
     }
 
-    //  Retornar firma completa
     return SIG_FORS;
 }
+
+
 
 // Algoritmo 17: fors_pkFromSig
 ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
@@ -1093,7 +1242,9 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
     const size_t n = params->n;
     const uint32_t k = params->k;
     const uint32_t a = params->a;
-    const uint32_t t = 1 << a;
+
+
+    const uint128_t t = uint128_t(static_cast<uint64_t>(1)) << a;
 
     std::vector<uint32_t> indices = base_2b(md, a, k);
     std::vector<ByteVector> roots(k);
@@ -1107,7 +1258,12 @@ ByteVector fors_pkFromSig(const ByteVector& SIG_FORS, const ByteVector& md,
         ByteVector sk(SIG_FORS.begin() + sk_offset, SIG_FORS.begin() + sk_offset + n);
 
         adrs.setTreeHeight(0);
-        adrs.setTreeIndex(i * t + indices[i]);
+
+
+        uint128_t i_128 = uint128_t(static_cast<uint64_t>(i));
+        uint128_t indices_i_128 = uint128_t(static_cast<uint64_t>(indices[i]));
+        uint128_t tree_idx_128 = i_128 * t + indices_i_128;
+        adrs.setTreeIndex(static_cast<uint32_t>(tree_idx_128));
 
         std::vector<ByteVector> node(2);
         if (!F(PKseed, adrs.toVector(), sk, node[0])) {
@@ -1212,28 +1368,21 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     const size_t tree_idx_bits = h - (h / d);
     const size_t leaf_idx_bits = h / d;
 
-    // ADRS ← toByte(0, 32)
     ADRS adrs;
-
-    // opt_rand ← addrnd
     ByteVector opt_rand = addrnd.empty() ? privateKey.pkSeed : addrnd;
 
-    // LÍNEA 3: R ← PRF_msg(SK.prf, opt_rand, M)
     ByteVector R;
     if (!PRF_msg(privateKey.prf, opt_rand, M, R)) {
         throw std::runtime_error("Error in PRF_msg");
     }
 
-    // LÍNEA 4: SIG ← R (siguiendo pseudocódigo literalmente)
     ByteVector SIG = R;
 
-    // LÍNEA 5: digest ← H_msg(R, PK.seed, PK.root, M)
     ByteVector digest;
     if (!H_msg(R, privateKey.pkSeed, privateKey.pkRoot, M, digest)) {
         throw std::runtime_error("Error in H_msg");
     }
 
-    // LÍNEAS 6-8: Extraer md, tmp_idx_tree, tmp_idx_leaf
     const size_t md_bits = k * a;
     const size_t md_bytes = (md_bits + 7) / 8;
     ByteVector md(digest.begin(), digest.begin() + md_bytes);
@@ -1249,43 +1398,29 @@ SLH_DSA_Signature slh_sign_internal(const ByteVector& M,
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    // LÍNEAS 9-10: Convertir índices CON FUNCIONES OPTIMIZADAS
 
-    // OPCIÓN 1: Replicar comportamiento exacto (limitando bytes)
-    size_t tree_bytes_to_read = std::min(tmp_idx_tree.size(), size_t(8));
-    uint64_t idx_tree = toInt64(tmp_idx_tree, tree_bytes_to_read);
-    if (tree_idx_bits < 64) {
-        idx_tree &= ((1ULL << tree_idx_bits) - 1);
-    }
+    uint128_t idx_tree_128 = toInt128(tmp_idx_tree, tree_idx_bytes);
+    uint128_t idx_leaf_128 = toInt128(tmp_idx_leaf, leaf_idx_bytes);
 
-    size_t leaf_bytes_to_read = std::min(tmp_idx_leaf.size(), size_t(8));
-    uint64_t idx_leaf = toInt64(tmp_idx_leaf, leaf_bytes_to_read);
-    if (leaf_idx_bits < 64) {
-        idx_leaf &= ((1ULL << leaf_idx_bits) - 1);
-    }
+    // Aplicar máscaras con precisión completa - SIEMPRE SEGURO
+    idx_tree_128 = idx_tree_128 & create_bit_mask_128(tree_idx_bits);
+    idx_leaf_128 = idx_leaf_128 & create_bit_mask_128(leaf_idx_bits);
 
-    // LÍNEAS 11-13: Setup ADRS
+    // Convertir de vuelta a uint64_t para APIs existentes
+    uint64_t idx_tree = static_cast<uint64_t>(idx_tree_128);
+    uint64_t idx_leaf = static_cast<uint64_t>(idx_leaf_128);
+
     adrs.setTreeAddress(idx_tree);
     adrs.setTypeAndClear(FORS_TREE);
     adrs.setKeyPairAddress(idx_leaf);
 
-    //  LÍNEA 14: SIG_FORS ← fors_sign(...)
     ByteVector SIG_FORS = fors_sign(md, privateKey.seed, privateKey.pkSeed, adrs);
-
-    //  LÍNEA 15: SIG ← SIG || SIG_FORS (concatenación explícita)
     SIG.insert(SIG.end(), SIG_FORS.begin(), SIG_FORS.end());
 
-    // LÍNEA 16: PK_FORS ← fors_pkFromSig(...)
     ByteVector PK_FORS = fors_pkFromSig(SIG_FORS, md, privateKey.pkSeed, adrs);
-
-    // LÍNEA 17: SIG_HT ← ht_sign(...) - Ahora ambos parámetros son uint64_t
     ByteVector SIG_HT = ht_sign(PK_FORS, privateKey.seed, privateKey.pkSeed, idx_tree, idx_leaf);
-
-    // LÍNEA 18: SIG ← SIG || SIG_HT (concatenación explícita)
     SIG.insert(SIG.end(), SIG_HT.begin(), SIG_HT.end());
 
-    // LÍNEA 19: return SIG
-    // Convertir ByteVector concatenado a estructura
     SLH_DSA_Signature signature;
     signature.randomness = R;
     signature.forsSignature = SIG_FORS;
@@ -1340,21 +1475,26 @@ bool slh_verify_internal(const ByteVector& M, const ByteVector& SIG, const SLH_D
     ByteVector md(digest.begin(), digest.begin() + md_bytes);
 
     const size_t tree_idx_start = md_bytes;
-    //const size_t tree_idx_bits = h - h_prima / d;
-    const size_t tree_idx_bits = h - (h / d);  // NO h - h_prima
+    const size_t tree_idx_bits = h - (h / d);
     const size_t tree_idx_bytes = (tree_idx_bits + 7) / 8;
     ByteVector tmp_idx_tree(digest.begin() + tree_idx_start,
                             digest.begin() + tree_idx_start + tree_idx_bytes);
 
     const size_t leaf_idx_start = tree_idx_start + tree_idx_bytes;
-    //const size_t leaf_idx_bits = h_prima / d;
-    const size_t leaf_idx_bits = h / d;        // NO h_prima
+    const size_t leaf_idx_bits = h / d;
     const size_t leaf_idx_bytes = (leaf_idx_bits + 7) / 8;
     ByteVector tmp_idx_leaf(digest.begin() + leaf_idx_start,
                             digest.begin() + leaf_idx_start + leaf_idx_bytes);
 
-    uint64_t idx_tree = toInt64(tmp_idx_tree, tmp_idx_tree.size()) & ((1ULL << tree_idx_bits) - 1);
-    uint64_t idx_leaf = toInt64(tmp_idx_leaf, tmp_idx_leaf.size()) & ((1ULL << leaf_idx_bits) - 1);
+
+    uint128_t idx_tree_128 = toInt128(tmp_idx_tree, tree_idx_bytes);
+    uint128_t idx_leaf_128 = toInt128(tmp_idx_leaf, leaf_idx_bytes);
+
+    idx_tree_128 = idx_tree_128 & create_bit_mask_128(tree_idx_bits);
+    idx_leaf_128 = idx_leaf_128 & create_bit_mask_128(leaf_idx_bits);
+
+    uint64_t idx_tree = static_cast<uint64_t>(idx_tree_128);
+    uint64_t idx_leaf = static_cast<uint64_t>(idx_leaf_128);
 
     adrs.setTreeAddress(idx_tree);
     adrs.setTypeAndClear(FORS_TREE);
